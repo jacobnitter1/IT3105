@@ -24,4 +24,5 @@ PegSolitaire.move_peg(2,5)
 PegSolitaire.print_boardState()
 
 
+print("check github")
 vis.drawBoard(PegSolitaire.get_org_boardState(),PegSolitaire.get_lastAction())
