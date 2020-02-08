@@ -118,10 +118,6 @@ class PegSolitaire(HexBoard):
 		return ok_move
 
 
-
-
-
-
 	def check(self):
 		#hole_num_to_placement OK
 		bs = self.boardState
@@ -146,7 +142,7 @@ class PegSolitaire(HexBoard):
 		game_done = False
 		if hole_num > 2**self.boardSize:
 			print("There is no such place!")
-			reward = -10
+			reward = -1
 		else:
 			if self.is_legal_action(hole_num, action):
 				a_r = self.actionSpace[action][0]
@@ -165,7 +161,7 @@ class PegSolitaire(HexBoard):
 
 		ended, won = self.is_game_done()
 		if won:
-			reward = 100
+			reward = 10
 		new_boardState = self.get_boardState()
 		return move_done, reward, new_boardState, ended
 
@@ -190,6 +186,16 @@ class PegSolitaire(HexBoard):
 
 	def print_board(self):
 		print(self.boardState)
+
+	def get_boardState(self):
+		listBoardState = list(filter(lambda a: a != -1, (self.boardState).flatten()))
+		return listBoardState
+
+	def get_org_boardState(self):
+		return self.boardState
+
+	def get_action_space(self):
+		return self.actionSpace
 
 
 
@@ -250,7 +256,7 @@ class VisualizePegSolitaire():
 		nodelist=[]
 		peg_num=0
 		boardSize =len(self.boardState)
-		print(boardSize)
+		#print(boardSize)
 		if self.boardShape == "Diamond":
 			first_pos =[0,0]
 			for dia_row in range(0,boardSize):
@@ -271,7 +277,7 @@ class VisualizePegSolitaire():
 					nodelist.append(peg_num)
 					peg_num+=1
 
-		print(pos, nodelist)
+		#print(pos, nodelist)
 		return pos, nodelist
 
 	def _pegPositionsNX(self):
@@ -311,7 +317,7 @@ class VisualizePegSolitaire():
 			return None, None
 		if self.boardShape == "Diamond":
 			num_pegs_in_row = r
-			print(num_pegs_in_row)
+			#print(num_pegs_in_row)
 
 			for row in range(r+1, boardSize*2-1):
 				if num_pegs_in_row <= 1:
