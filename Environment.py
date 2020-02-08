@@ -41,7 +41,7 @@ class HexBoard():
 				i = self.boardState[r,c]
 				if i == 1:
 					num_pegs+=1
-			
+
 		return num_pegs
 
 	def hole_num_to_placement(self, hole_num):
@@ -129,8 +129,8 @@ class PegSolitaire(HexBoard):
 			for c in range(0,len(bs)):
 				k = self.placement_to_hole_num(r,c)
 				r_,c_ = self.hole_num_to_placement(k)
-				print(r,c," = ", k, " = ",r_,c_)
-		print("OK")
+				#print(r,c," = ", k, " = ",r_,c_)
+		#print("OK")
 	def inside_board(self,r,c):
 		if r >= 0 and r < self.boardSize:
 			if c >= 0 and c < self.boardSize:
@@ -156,7 +156,7 @@ class PegSolitaire(HexBoard):
 				self.boardState[r+a_r,c+a_c] = 0
 				self.boardState[r+2*a_r,c+2*a_c] = 1
 				self.lastAction = [[r,c],[r+2*a_r,c+2*a_c]]
-				print("Jumped from ",hole_num," to ", self.placement_to_hole_num(r+2*a_r,c+2*a_c))
+				#print("Jumped from ",hole_num," to ", self.placement_to_hole_num(r+2*a_r,c+2*a_c))
 				move_done = True
 				reward = 1
 			else:
@@ -206,7 +206,7 @@ class VisualizePegSolitaire():
 		self.colormap = self.pegColorMap()
 		self.node_sizes = self.node_sizes_()
 		self.pegPositions, self.nodelist = self.pegPositionsNX()
-		
+
 	def update_last_action(self, action):
 		self.lastAction = action
 
@@ -224,7 +224,7 @@ class VisualizePegSolitaire():
 					colormap.append('red')
 				elif i == 0 :
 					colormap.append('black')
-				
+
 		#print(colormap)
 		return colormap
 
@@ -258,9 +258,19 @@ class VisualizePegSolitaire():
 					first_pos[0] = -dia_row+dia_col
 					first_pos[1]= dia_row+dia_col
 					pos[peg_num] = [first_pos[0],first_pos[1]]
-					print(peg_num,first_pos)
+					#print(peg_num,first_pos)
 					nodelist.append(peg_num)
 					peg_num+=1
+		if self.boardShape == "Triangle":
+			for r in range(0, boardSize):
+				pos[peg_num]=[-r,-r]
+				nodelist.append(peg_num)
+				peg_num+=1
+				for node in range(0,r):
+					pos[peg_num]=[-r,-r+(node+1)*2]
+					nodelist.append(peg_num)
+					peg_num+=1
+
 		print(pos, nodelist)
 		return pos, nodelist
 
@@ -302,7 +312,7 @@ class VisualizePegSolitaire():
 		if self.boardShape == "Diamond":
 			num_pegs_in_row = r
 			print(num_pegs_in_row)
-			
+
 			for row in range(r+1, boardSize*2-1):
 				if num_pegs_in_row <= 1:
 					pos[peg_num]=[0,row]
@@ -327,7 +337,7 @@ class VisualizePegSolitaire():
 							nodelist.append(peg_num)
 							peg_num+=1
 						for c in range(0,int(num_pegs_in_row/2)):
-							pos[peg_num]=[1+2*c,row]#[1+2*c,row]#pos[peg_num] = 
+							pos[peg_num]=[1+2*c,row]#[1+2*c,row]#pos[peg_num] =
 							nodelist.append(peg_num)
 							peg_num +=1
 					num_pegs_in_row-=1
@@ -347,11 +357,10 @@ class VisualizePegSolitaire():
 		plt.figure(figsize =(124,124))
 		g = nx.Graph()
 
-		print(self.pegPositions, self.node_sizes, self.nodelist, self.colormap)
+		print("POSITIONS:",self.pegPositions)
+		print("SIZES:", self.node_sizes)
+		print("NODELIST:",self.nodelist)
+		print("COLORMAP : ", self.colormap)
 		nx.draw_networkx_nodes(g, self.pegPositions, node_size = self.node_sizes, nodelist=self.nodelist, node_color=self.colormap)
 		#plt.figure()
 		plt.show()
-
-
-
-
