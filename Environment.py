@@ -1,6 +1,8 @@
 import numpy as np
 import networkx as nx
 import matplotlib.pyplot as plt
+import matplotlib.animation as anim
+from IPython.display import clear_output
 
 class HexBoard():
 	def __init__(self, boardShape, boardSize, numHoles, placementHoles):
@@ -59,12 +61,12 @@ class HexBoard():
 		k = 0
 		for r_ in range(0,self.boardSize):
 			for c_ in range(0,self.boardSize):
-				if self.boardState[r,c] != -1:
+				if self.boardState[r_,c_] != -1:
 					if r==r_ and c==c_ :
+						#print("placement_to_hole_num returned : ",k," with boardsize", self.boardSize)
 						return k
 					else:
 						k+=1
-
 
 	def print_boardState(self):
 		print(self.boardState)
@@ -81,40 +83,67 @@ class PegSolitaire(HexBoard):
 		self.placementHoles = placementHoles # if None -> if numHoles <4 -> center, else random
 		self.boardState = self.init_boardState(boardSize, boardShape, numHoles)
 		self.place_holes()
-		self.actionSpace= np.array([[-1,0],[-1,1],[0,1],[1,0],[1,-1],[0,-1]])
+		#self.actionSpace= np.array([[-1,0],[-1,1],[0,1],[1,0],[1,-1],[0,-1]])
+		self.actionSpace = np.array([[1,1],[-1,-1],[-1,0],[1,0],[0,1],[0,-1]])
 		self.lastAction=[None,None] #from numhole, to numhole
 		# self.numPegsLeft=[] # for printing må til agent!
+	def get_obs_space(self):
+		k = 0
+		for i in range(0, self.boardSize):
+			for j in range(0,self.boardSize):
+				if self.boardState[i,j] == 0 or self.boardState[i,j] == 1:
+					k+=1
+		return k
+	def reset(self, numHoles,placementHoles):
+		self.numHoles = numHoles
+		self.placementHoles = placementHoles
+		self.boardState =  self.init_boardState(self.boardSize, self.boardShape, numHoles)
+		self.place_holes()
+		self.lastAction=[None,None]
+		return self.boardState
+
 	def get_lastAction(self):
 		return self.lastAction
 
+	def get_legal_actions(self,num_holes_in_board):
+		list = []
+		for i in range(0,num_holes_in_board):
+			for j in range(0, len(self.actionSpace)):
+				if self.is_legal_action(i,j):
+					list.append([i,j])
+		return list
+
 	def is_legal_action(self, hole_num, action):
 		boardState = self.get_org_boardState()
+		#print("Is legal action : ", boardState," and ", action)
+		if action == [] or hole_num == []:
+			return False
 		a_r = self.actionSpace[action][0]
 		a_c = self.actionSpace[action][1]
 		ok_move= True
 		r,c = self.hole_num_to_placement(hole_num)
-		#print("Place: ", hole_num," and action ", action)
-		if boardState[r,c] == 0:
+		#print("Place: ", hole_num," and action ", action," to coordinates : ",r,c, " and action ", a_r,a_c)
+		if boardState[r,c] == 0 or boardState[r,c] == -1:
 			ok_move =False
-			#print(r,c," No peg in hole wanting to jump")
+		#	print(r,c," No peg in hole wanting to jump")
 		else:
 			if not self.inside_board(r+a_r,c+a_c):
-			#	print(r,c," Neighbor hole outside board")
+		#		print(r+a_r,c+a_c," Neighbor hole outside board")
 				ok_move = False
 			else:
-				if boardState[r+a_r,c+a_c] != 1:
-			#		print(r,c," No peg in neighbor hole/neighbor hole = -1")
+				if boardState[r+a_r,c+a_c] != 1 :
+		#			print(r+a_r,c+a_c," No peg in neighbor hole/neighbor hole = -1")
 					ok_move = False
 				else:
 					if (not self.inside_board(r+2*a_r,c+2*a_c)):
-			#			print(r,c," Landing hole outside board")
+		#				print(r,c," Landing hole outside board")
 						ok_move = False
 					else:
 						if boardState[r+2*a_r,c+2*a_c] != 0:
-			#				print(r,c," Landing hole not empty/landin hole = -1")
+		#					print(r,c," Landing hole not empty/landin hole = -1")
 							ok_move = False
-		if ok_move:
-			print("OK action jumping from ", hole_num," to ", self.placement_to_hole_num(r+2*a_r,c+2*a_c)," by action ", action,)
+		#if ok_move:
+			#print("OK action jumping from ", hole_num," to ", self.placement_to_hole_num(r+2*a_r,c+2*a_c)," by action ", action,)
 		return ok_move
 
 
@@ -156,7 +185,7 @@ class PegSolitaire(HexBoard):
 				move_done = True
 				reward = 1
 			else:
-				reward = -10
+				reward = -1
 				move_done = False
 
 		ended, won = self.is_game_done()
@@ -221,14 +250,17 @@ class VisualizePegSolitaire():
 
 	def pegColorMap(self):
 		boardState = self.boardState
-		#print(boardState)
+
+		#print("---> pegColorMap : ",boardState)
+		#print( len(self.boardState))
+		#print( (self.boardState[0][0]))
 		colormap = []
 		for r in range(0, len(self.boardState)):
 			for c in range(0, len(self.boardState)):
-				i = self.boardState[r,c]
-				if i == 1:
+				i = int(self.boardState[r][c])
+				if i == 1 or i == 2:
 					colormap.append('red')
-				elif i == 0 :
+				elif i == 0 or i == 3:
 					colormap.append('black')
 
 		#print(colormap)
@@ -238,8 +270,8 @@ class VisualizePegSolitaire():
 		org_boardState= self.boardState
 		lastAction = self.lastAction
 		if lastAction[0] != None:
-			org_boardState[lastAction[0][0],lastAction[0][1]]=3
-			org_boardState[lastAction[1][0],lastAction[1][1]]=2
+			org_boardState[lastAction[0][0],lastAction[0][1]]=3 # from
+			org_boardState[lastAction[1][0],lastAction[1][1]]=2 # to
 		boardState = list(filter(lambda a: a != -1, org_boardState.flatten()))
 		node_sizes = []
 		for i in boardState:
@@ -249,6 +281,10 @@ class VisualizePegSolitaire():
 				node_sizes.append(3000)
 			elif i == 3: #The one that was last left
 				node_sizes.append(200)
+
+		if lastAction[0] != None:
+			org_boardState[lastAction[0][0],lastAction[0][1]]=0 # from
+			org_boardState[lastAction[1][0],lastAction[1][1]]=1 # to
 		return node_sizes
 
 	def pegPositionsNX(self):
@@ -272,8 +308,8 @@ class VisualizePegSolitaire():
 				pos[peg_num]=[-r,-r]
 				nodelist.append(peg_num)
 				peg_num+=1
-				for node in range(0,r):
-					pos[peg_num]=[-r,-r+(node+1)*2]
+				for c in range(0,r):
+					pos[peg_num]=[-r,-r+(c+1)*2]
 					nodelist.append(peg_num)
 					peg_num+=1
 
@@ -364,9 +400,33 @@ class VisualizePegSolitaire():
 		g = nx.Graph()
 
 		print("POSITIONS:",self.pegPositions)
-		print("SIZES:", self.node_sizes)
-		print("NODELIST:",self.nodelist)
-		print("COLORMAP : ", self.colormap)
+		#print("SIZES:", self.node_sizes)
+		#print("NODELIST:",self.nodelist)
+		#print("COLORMAP : ", self.colormap)
 		nx.draw_networkx_nodes(g, self.pegPositions, node_size = self.node_sizes, nodelist=self.nodelist, node_color=self.colormap)
-		#plt.figure()
+
 		plt.show()
+
+	def show_played_game(self,states, actions):
+		print("TRAJECTORY HAS ", len(states), " TRANSITIONS!")
+		print(states)
+		if len(states)== 0:
+			print("0 transitions")
+			return None
+		elif len(states)==1:
+			print("1 transitions")
+			#print(len(states), states[0])
+			self.drawBoard(states[0],[None,None])
+		else:
+			print("many transitions")
+			#self.update_vis_params(states[0],action[0])
+			g = nx.Graph()
+			#nx.draw_networkx_nodes(g, self.pegPositions, node_size = self.node_sizes, nodelist=self.nodelist, node_color=self.colormap)
+			#lastAction = actions[0]
+			#plt.show()
+			for i in range(0,len(states)):
+				#print("---->",states[i])
+				print(states[i], actions[i])
+				self.update_vis_params(states[i],[actions[i][0],actions[i][1]])
+				nx.draw_networkx_nodes(g, self.pegPositions, node_size = self.node_sizes, nodelist=self.nodelist, node_color=self.colormap)
+				plt.show()
