@@ -226,6 +226,13 @@ class PegSolitaire(HexBoard):
 	def get_action_space(self):
 		return self.actionSpace
 
+	def num_pegs_left(self):
+		num = 0
+		for elem in self.get_boardState():
+			if elem == 1:
+				num+=1
+		return num
+
 
 
 
@@ -408,17 +415,18 @@ class VisualizePegSolitaire():
 		plt.show()
 
 	def show_played_game(self,states, actions):
-		print("TRAJECTORY HAS ", len(states), " TRANSITIONS!")
-		print(states)
+		#print("TRAJECTORY HAS ", len(states), " TRANSITIONS!")
+		#print(states[0])
+		plt.ion()
 		if len(states)== 0:
-			print("0 transitions")
+			#print("0 transitions")
 			return None
 		elif len(states)==1:
-			print("1 transitions")
+			#print("1 transitions")
 			#print(len(states), states[0])
 			self.drawBoard(states[0],[None,None])
 		else:
-			print("many transitions")
+			#print("many transitions")
 			#self.update_vis_params(states[0],action[0])
 			g = nx.Graph()
 			#nx.draw_networkx_nodes(g, self.pegPositions, node_size = self.node_sizes, nodelist=self.nodelist, node_color=self.colormap)
@@ -426,7 +434,9 @@ class VisualizePegSolitaire():
 			#plt.show()
 			for i in range(0,len(states)):
 				#print("---->",states[i])
-				print(states[i], actions[i])
+				#print("--->",states[i], actions[i])
 				self.update_vis_params(states[i],[actions[i][0],actions[i][1]])
 				nx.draw_networkx_nodes(g, self.pegPositions, node_size = self.node_sizes, nodelist=self.nodelist, node_color=self.colormap)
-				plt.show()
+				plt.draw()
+				plt.pause(1)
+				plt.clf()
