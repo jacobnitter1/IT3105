@@ -1,27 +1,78 @@
 import numpy as np
 import tensorflow as tf
+from tensorflow.keras.optimizers import SGD
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import  Dense
+from tensorflow.keras.activations import relu,tanh,linear,sigmoid
+import SplitGD
 #import splitgd
 
 
-class Critic_NN():
-	def __init__(self, hidden_layers_dim, obs_space, action_space):
-		self.value_function = self.createNN(obs_space,hidden_layers_dim)
-		self.q_function = self.createNN(obs_space+action_space, hidden_layers_dim)
-		self.weights_val = (self.value_function).kernel
-		self.e_traces = np.zeros(shape(weights_val))
+class Critic_NN(SplitGD.SplitGD):
+	def __init__(self, obs_space, hidden_layers_dim, gamma,lr):
+		#Critic_NN( int(obs_space),NN_structure, gamma,alpha)
+		self.obs_space = obs_space
+		self.hidden_layers_dim = hidden_layers_dim
+
+		self.lr = lr
+		self.e_traces = self.init_e_traces()
+		self.model = SplitGD.SplitGD(self.createNN(),0.7,self.e_traces)
+		self.gamma = gamma
 		#??? Hvilken størrelse skal eligibility tracesene ha?????
 
+	def init_e_traces(self):
+		weights_pr_layer=[]
+		weights_pr_layer.append([self.obs_space,self.hidden_layers_dim[0]])
+		for i in range(0,len(self.hidden_layers_dim)-1):
+			weights_pr_layer.append([self.hidden_layers_dim[i],self.hidden_layers_dim[i+1]])
+		weights_pr_layer.append([self.hidden_layers_dim[-1],1])
+		#return np.zeros(weights_pr_layer)
 
-	def createNN(input_dim, hidden_layers_dim, output_dim =1,activation_function = tf.nn.relu):
-		model = tf.keras.models.Sequential()
-		model.add(Dense(hidden_layers_dim[0], input_shape=(input_shape,)))
-		for i in range(1,len(hidden_layers_dim)):
-			if len(activation_function) == len(hidden_layers_dim):
-				model.add(Dense(hidden_layers_dim[i]), activation = activation_function)
-			else:
-				model.add(Dense(hidden_layers_dim[i], activation = activation_function))
-		model.add(Dense(output_dim), activation = tf.nn.sigmoid)
+	def createNN(self,output_dim =1,activation_function = 'tanh'):
+		model = Sequential()
+		nn_struct = self.hidden_layers_dim
+		num_layers = len(nn_struct)
+		model.add(Dense(nn_struct[0],input_dim=self.obs_space))
+		for i in range(1,num_layers):
+			model.add(Dense(nn_struct[i], activation = activation_function))
+		model.add(Dense(output_dim, activation = None))
+		sgd = SGD(learning_rate = self.lr,momentum = 0.0, nesterov=False)
+		model.compile(loss='mse',optimizer=sgd)
+		print(model.summary())
 		return model
+
+	def get_state_value(self, state):
+		return self.model.get_model().predict([state])
+
+	def get_TD_error(self,reward,state,next_state):
+		if state == next_state:
+			return -1
+		else:
+			return reward + self.gamma*self.get_state_value(state)-self.get_state_value(next_state)
+
+	def update_critic(self, trajectory_states, TD):
+
+		if len(trajectory_states)==1:
+			states=[trajectory_states]
+			y = TD
+		else:
+			states = np.zeros((len(trajectory_states),self.obs_space))#trajectory_states
+			y = np.zeros(len(trajectory_states))
+			for i in range(0,len(trajectory_states)):
+				states[i] = trajectory_states[i]
+				y[i] = TD
+
+		#print(len(states),	states,y)
+		#SplitGD.fit()
+		self.model.fit_SplitGD(states,y,verbose=False)#, batch_size=len(trajectory_states), epochs=10,verbose=0
+
+
+	def reset_e_traces(self):
+		pass
+	def update_e_traces(self,state):
+		pass
+		### HOW SHOULD THIS BE DONE? Update every step and then for every step in trajectory? Do it like this for now
+
 
 class Actor_tab():
 	def __init__(self, obs_space, action_space, epsilon, learning_rate, e_discount):
@@ -134,10 +185,6 @@ class Actor_tab():
 			action = actions[i]
 			self.table[state][action[0]][action[1]] = self.table[state][action[0]][action[1]] + self.learning_rate*TD_error*self.e_traces[state][action[0]][action[1]]
 
-
-
-
-
 class Critic_tab():
 	def __init__(self, obs_space,gamma, alpha, lamda):
 		self.value_table = np.random.rand(2**(obs_space))
@@ -151,7 +198,7 @@ class Critic_tab():
 		print(self.value_table)
 	def get_TD_error(self,reward,state,next_state):
 		if state == next_state:
-			return -1
+			delta = -1
 		else:
 			delta = reward + self.gamma*self.value_table[self.bin_state_to_state_num(next_state)] - self.value_table[self.bin_state_to_state_num(state)]
 		return delta
@@ -182,13 +229,12 @@ class Critic_tab():
 		s = ''.join(str(int(elem)) for elem in state)
 		return int(s,2)
 
-
-
-
 class Agent():
 	def __init__(self,critic_type, NN_structure, obs_space, action_space , gamma, alpha, lamda):
+		self.critic_type = critic_type
 		if critic_type == "NN":
-			self.critic = Critic_NN(dim_NN, obs_space, action_space)
+			#print("NN structure : ", NN_structure, "and obs sapce : ", obs_space)
+			self.critic = Critic_NN(obs_space,NN_structure, gamma,alpha)
 		else:
 			self.critic = Critic_tab(obs_space, gamma, alpha, lamda)
 		self.actor= Actor_tab(obs_space = obs_space, action_space=action_space, epsilon=0.3, learning_rate=alpha, e_discount=lamda)
@@ -201,9 +247,13 @@ class Agent():
 		self.replay_trajectories_states = []
 		self.replay_trajectories_actions = []
 
+	def set_policy(self,policy_table):
+		self.actor.set_policy(policy_table)
+
 	def update_replay_trajectories(self, state,action):
 		self.replay_trajectories_states.append(state)
 		self.replay_trajectories_actions.append(action)
+
 	def get_replay_trajectories(self):
 		return self.replay_trajectories_states, self.replay_trajectories_actions
 
@@ -227,7 +277,7 @@ class Agent():
 
 		#print(self.trajectory_states," and ", self.trajectory_actions)
 		self.actor.update_e_traces(state,action)
-		self.critic.update_e_traces(state)
+		#self.critic.update_e_traces(state)
 		self.num_memorized +=1
 
 	def get_trajectories(self):
@@ -235,7 +285,8 @@ class Agent():
 
 	def update_agent(self, state, next_state, reward):
 		TD_error = self.critic.get_TD_error(reward,state,next_state)
-		self.critic.update_critic(self.trajectory_states, TD_error)
+		#self.critic.update_critic(self.trajectory_states, TD_error)
+		self.critic.update_critic([state], TD_error)
 		self.actor.update_actor(self.trajectory_states,self.trajectory_actions,TD_error)
 
 	def get_action(self,state,epsilon):
