@@ -5,18 +5,20 @@ from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import  Dense
 from tensorflow.keras.activations import relu,tanh,linear,sigmoid
 import SplitGD
+import math
 #import splitgd
 
 
 class Critic_NN(SplitGD.SplitGD):
-	def __init__(self, obs_space, hidden_layers_dim, gamma,lr):
+	def __init__(self, obs_space, hidden_layers_dim, gamma,lr,e_decay_factor):
 		#Critic_NN( int(obs_space),NN_structure, gamma,alpha)
 		self.obs_space = obs_space
 		self.hidden_layers_dim = hidden_layers_dim
-
+		self.e_decay_factor = e_decay_factor
 		self.lr = lr
 		self.e_traces = self.init_e_traces()
-		self.model = SplitGD.SplitGD(self.createNN(),0.7,self.e_traces)
+		self.model = SplitGD.SplitGD(self.createNN(),self.e_decay_factor,self.e_traces,self.lr)
+		#self.model = self.createNN()
 		self.gamma = gamma
 		#??? Hvilken størrelse skal eligibility tracesene ha?????
 
@@ -28,47 +30,71 @@ class Critic_NN(SplitGD.SplitGD):
 		weights_pr_layer.append([self.hidden_layers_dim[-1],1])
 		#return np.zeros(weights_pr_layer)
 
-	def createNN(self,output_dim =1,activation_function = 'tanh'):
+	def createNN(self,output_dim =1,activation_function = 'sigmoid'):
 		model = Sequential()
 		nn_struct = self.hidden_layers_dim
 		num_layers = len(nn_struct)
 		model.add(Dense(nn_struct[0],input_dim=self.obs_space))
 		for i in range(1,num_layers):
 			model.add(Dense(nn_struct[i], activation = activation_function))
-		model.add(Dense(output_dim, activation = None))
+		model.add(Dense(output_dim, activation = 'sigmoid'))
 		sgd = SGD(learning_rate = self.lr,momentum = 0.0, nesterov=False)
 		model.compile(loss='mse',optimizer=sgd)
 		print(model.summary())
 		return model
 
 	def get_state_value(self, state):
+		#print(np.shape(state))
+		#if np.shape(state) == (1,16):
+		#	print(np.shape(state[0]))
+		#	return self.model.get_model().predict(state[0])
+		#else:
 		return self.model.get_model().predict([state])
 
 	def get_TD_error(self,reward,state,next_state):
-		if state == next_state:
-			return -1
+		same_booll= True
+		for i in range(0,len(state)):
+			if state[i] != next_state[i]:
+				same_booll = False
+		if same_booll:
+			TD = -1
 		else:
-			return reward + self.gamma*self.get_state_value(state)-self.get_state_value(next_state)
+			#print(np.shape(state), state)
+			#print(np.shape(next_state),next_state)
+			#if np.shape(state) == (16,):
+			#	print("shape (16,)")
+			#	s_val = self.get_state_value([state])
+			#	ns_val = self.get_state_value([next_state])
+			#	return reward + self.gamma*s_val-ns_val
+			#else:
+			TD =reward + self.gamma*self.get_state_value(state)-self.get_state_value(next_state)
+		if math.isnan(TD):
+			print( "TD = ", reward, " + ", self.gamma, " * ", self.get_state_value(state)," - ", self.get_state_value(next_state))
+		#print("TD error is " ,TD[0][0])
+		return TD
+
 
 	def update_critic(self, trajectory_states, TD):
 
 		if len(trajectory_states)==1:
 			states=[trajectory_states]
 			y = TD
+			#print(TD)
 		else:
 			states = np.zeros((len(trajectory_states),self.obs_space))#trajectory_states
 			y = np.zeros(len(trajectory_states))
 			for i in range(0,len(trajectory_states)):
 				states[i] = trajectory_states[i]
+				#print(TD)
 				y[i] = TD
 
 		#print(len(states),	states,y)
 		#SplitGD.fit()
 		self.model.fit_SplitGD(states,y,verbose=False)#, batch_size=len(trajectory_states), epochs=10,verbose=0
-
+		#self.model.fit(states,y,verbose=False, batch_size=len(trajectory_states),epochs=10)
 
 	def reset_e_traces(self):
-		pass
+		self.model.reset_e_traces()
 	def update_e_traces(self,state):
 		pass
 		### HOW SHOULD THIS BE DONE? Update every step and then for every step in trajectory? Do it like this for now
@@ -76,11 +102,12 @@ class Critic_NN(SplitGD.SplitGD):
 
 class Actor_tab():
 	def __init__(self, obs_space, action_space, epsilon, learning_rate, e_discount):
-		self.table = np.zeros((2**((obs_space)),(obs_space),(action_space)))
-		for i in range(0, 2**obs_space):
-			for j in range(0, obs_space):
-				for k in range(0,action_space):
-					self.table[i,j,k] += np.random.rand()/4
+		self.table = np.random.rand(2**((obs_space)),obs_space,action_space)
+		print("policy table made")
+		#for i in range(0, 2**obs_space):
+		#	for j in range(0, obs_space):
+		#		for k in range(0,action_space):
+		#			self.table[i,j,k] += np.random.rand()/4
 		self.num_entries_obs = 2**((obs_space)*(obs_space))
 		self.num_entries_act=2**(action_space)
 		self.e_traces = np.zeros((2**((obs_space)),(obs_space),(action_space)))
@@ -164,7 +191,7 @@ class Actor_tab():
 			self.e_traces[state_num][action[0]][action[1]]=1
 			#print("---->",self.e_traces[state_num])
 		else:
-			print(state,num, len(state))
+			#print(state,num, len(state))
 			for i in range(0,num):
 				state_num = self.bin_state_to_state_num(state[i])
 				for j in range(0,i):
@@ -230,14 +257,13 @@ class Critic_tab():
 		return int(s,2)
 
 class Agent():
-	def __init__(self,critic_type, NN_structure, obs_space, action_space , gamma, alpha, lamda):
+	def __init__(self,critic_type, NN_structure, obs_space, action_space, critic_lerning_rate, actor_learning_rate, critic_e_decay_rate, actor_e_decay_rate,gamma, epsilon=0.0):
 		self.critic_type = critic_type
 		if critic_type == "NN":
-			#print("NN structure : ", NN_structure, "and obs sapce : ", obs_space)
-			self.critic = Critic_NN(obs_space,NN_structure, gamma,alpha)
+			self.critic = Critic_NN(obs_space,NN_structure, critic_e_decay_rate,critic_lerning_rate,gamma)
 		else:
-			self.critic = Critic_tab(obs_space, gamma, alpha, lamda)
-		self.actor= Actor_tab(obs_space = obs_space, action_space=action_space, epsilon=0.3, learning_rate=alpha, e_discount=lamda)
+			self.critic = Critic_tab(obs_space, gamma, critic_lerning_rate, critic_e_decay_rate)
+		self.actor= Actor_tab(obs_space = obs_space, action_space=action_space, epsilon=epsilon, learning_rate=actor_learning_rate, e_discount=actor_e_decay_rate)
 		self.trajectory_states = []
 		self.trajectory_actions= []
 		self.obs_space = obs_space
@@ -273,6 +299,7 @@ class Agent():
 	def update_trajectories(self,state,action):
 		#print(self.trajectory_states," and ", self.trajectory_actions)
 		self.trajectory_states.append(state)
+		#print(self.trajectory_states)
 		self.trajectory_actions.append(action)
 
 		#print(self.trajectory_states," and ", self.trajectory_actions)
@@ -283,10 +310,13 @@ class Agent():
 	def get_trajectories(self):
 		return self.trajectory_states,self.trajectory_actions
 
+	def get_TD_error(self,reward,state,next_state):
+		return self.critic.get_TD_error(reward,state,next_state)
 	def update_agent(self, state, next_state, reward):
+		#print(state, next_state)
 		TD_error = self.critic.get_TD_error(reward,state,next_state)
-		#self.critic.update_critic(self.trajectory_states, TD_error)
-		self.critic.update_critic([state], TD_error)
+		self.critic.update_critic(self.trajectory_states, TD_error)
+		#self.critic.update_critic([state], TD_error)
 		self.actor.update_actor(self.trajectory_states,self.trajectory_actions,TD_error)
 
 	def get_action(self,state,epsilon):
