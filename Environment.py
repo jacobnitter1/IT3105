@@ -85,7 +85,7 @@ class PegSolitaire(HexBoard):
 		self.place_holes()
 		#self.actionSpace= np.array([[-1,0],[-1,1],[0,1],[1,0],[1,-1],[0,-1]])
 		self.actionSpace = np.array([[1,1],[-1,-1],[-1,0],[1,0],[0,1],[0,-1]])
-		self.lastAction=[None,None] #from numhole, to numhole
+		self.lastAction=[[None,None],[None,None]] #from numhole, to numhole
 		# self.numPegsLeft=[] # for printing må til agent!
 	def get_obs_space(self):
 		k = 0
@@ -106,12 +106,13 @@ class PegSolitaire(HexBoard):
 		return self.lastAction
 
 	def get_legal_actions(self,num_holes_in_board):
-		list = []
+		actions = []
 		for i in range(0,num_holes_in_board):
 			for j in range(0, len(self.actionSpace)):
 				if self.is_legal_action(i,j):
-					list.append([i,j])
-		return list
+					actions.append([i,j])
+		#print("legal actions : ",actions)
+		return actions
 
 	def is_legal_action(self, hole_num, action):
 		boardState = self.get_org_boardState()
@@ -174,12 +175,17 @@ class PegSolitaire(HexBoard):
 			reward = -1
 		else:
 			if self.is_legal_action(hole_num, action):
+				#print("action is legal")
 				a_r = self.actionSpace[action][0]
 				a_c = self.actionSpace[action][1]
 				r,c = self.hole_num_to_placement(hole_num)
+				#print("inside move peg")
+				#print(self.boardState)
 				self.boardState[r,c] = 0
 				self.boardState[r+a_r,c+a_c] = 0
 				self.boardState[r+2*a_r,c+2*a_c] = 1
+				#print(self.boardState)
+				#print("is it updated")
 				self.lastAction = [[r,c],[r+2*a_r,c+2*a_c]]
 				#print("Jumped from ",hole_num," to ", self.placement_to_hole_num(r+2*a_r,c+2*a_c))
 				move_done = True
@@ -192,7 +198,7 @@ class PegSolitaire(HexBoard):
 		if won:
 			reward = 10
 		new_boardState = self.get_boardState()
-		return move_done, reward, new_boardState, ended
+		return move_done, reward, new_boardState,ended
 
 	def moves_left(self):
 		boardState = self.get_boardState()
@@ -243,7 +249,7 @@ class PegSolitaire(HexBoard):
 class VisualizePegSolitaire():
 	def __init__(self,board, boardShape):
 		self.boardState = board
-		self.lastAction = [None,None]
+		self.lastAction = [[None,None],[None,None]]
 		self.boardShape = boardShape
 		self.colormap = self.pegColorMap()
 		self.node_sizes = self.node_sizes_()
@@ -276,7 +282,8 @@ class VisualizePegSolitaire():
 	def node_sizes_(self):
 		org_boardState= self.boardState
 		lastAction = self.lastAction
-		if lastAction[0] != None:
+		if lastAction[0][0] != None:
+			print(org_boardState, lastAction[0][0])
 			org_boardState[lastAction[0][0],lastAction[0][1]]=3 # from
 			org_boardState[lastAction[1][0],lastAction[1][1]]=2 # to
 		boardState = list(filter(lambda a: a != -1, org_boardState.flatten()))
@@ -289,7 +296,7 @@ class VisualizePegSolitaire():
 			elif i == 3: #The one that was last left
 				node_sizes.append(200)
 
-		if lastAction[0] != None:
+		if lastAction[0][0] != None:
 			org_boardState[lastAction[0][0],lastAction[0][1]]=0 # from
 			org_boardState[lastAction[1][0],lastAction[1][1]]=1 # to
 		return node_sizes
@@ -400,21 +407,27 @@ class VisualizePegSolitaire():
 		self.node_sizes = self.node_sizes_()
 		self.pegPositions, self.nodelist = self.pegPositionsNX()
 
+	def get_vis_params(self,boardState,lastAction):
+		self.update_vis_params(boardState,lastAction)
+		return self.pegPositions, self.node_sizes, self.nodelist, self.colormap
+
 
 	def drawBoard(self,boardState,lastAction):
 		self.update_vis_params(boardState, lastAction)
 		plt.figure(figsize =(124,124))
 		g = nx.Graph()
 
-		print("POSITIONS:",self.pegPositions)
+		#print("POSITIONS:",self.pegPositions)
 		#print("SIZES:", self.node_sizes)
 		#print("NODELIST:",self.nodelist)
 		#print("COLORMAP : ", self.colormap)
 		nx.draw_networkx_nodes(g, self.pegPositions, node_size = self.node_sizes, nodelist=self.nodelist, node_color=self.colormap)
 
-		plt.show()
+		plt.draw()
+		plt.pause(0.002)
+		#plt.close()
 
-	def show_played_game(self,states, actions):
+	def show_played_game(self,states, actions,delay):
 		#print("TRAJECTORY HAS ", len(states), " TRANSITIONS!")
 		#print(states[0])
 		plt.ion()
@@ -435,8 +448,12 @@ class VisualizePegSolitaire():
 			for i in range(0,len(states)):
 				#print("---->",states[i])
 				#print("--->",states[i], actions[i])
+				#print("state -> ",states[i])
+				#print("show ", actions[i][0])
 				self.update_vis_params(states[i],[actions[i][0],actions[i][1]])
 				nx.draw_networkx_nodes(g, self.pegPositions, node_size = self.node_sizes, nodelist=self.nodelist, node_color=self.colormap)
 				plt.draw()
-				plt.pause(1)
+				#print("before pause")
+				plt.pause(delay)
+				#print("after pause : ", delay)
 				plt.clf()
