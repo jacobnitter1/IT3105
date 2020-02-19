@@ -14,26 +14,30 @@ import tensorflow.keras.optimizers
 
 class SplitGD():
 
-    def __init__(self, keras_model, e_decay_factor, e_traces):
+    def __init__(self, keras_model, e_decay_factor, e_traces,lr):
         self.model = keras_model
         self.e_decay_factor = e_decay_factor
         self.e_traces = self.model.trainable_weights
-
-
+        self.lr=lr
     # Subclass this with something useful.
 
     def get_model(self):
         return self.model
 
+    def reset_e_traces(self):
+        for i in range(0,len(self.e_traces)):
+            self.e_traces[i] = tf.math.scalar_mul(0,self.e_traces[i])
 
-    def modify_gradients(self,gradients):
+    def modify_gradients(self,gradients,TDs):
         #self.e_traces = tf.math.multiply(tf.convert_to_tensor(self.e_decay_factor,dtype=tf.float32),self.e_traces)+gradients
-        print(self.e_decay_factor)
+        #print(self.e_decay_factor)
+        return gradients
         for i in range(0,len(gradients)):
         # GRADIENTS IS A LIST OF TENSORS
-            self.e_traces[i] = tf.math.scalar_mul(self.e_decay_factor,self.e_traces[i])
+            self.e_traces[i] = tf.math.scalar_mul(self.e_decay_factor,self.e_traces[i])+gradients[i]
 
-        gradients += self.e_traces
+        for i in range(0,len(gradients)):
+            gradients[i] += tf.math.scalar_mul(self.lr*tf.reduce_mean(TDs).numpy(),self.e_traces[i])
         #print("ok - ", np.shape(gradients)," and ", np.shape(self.e_traces))
         #print(gradients)
         return gradients
@@ -48,15 +52,17 @@ class SplitGD():
 
     def fit_SplitGD(self, features, targets, epochs=1, mbs=1,vfrac=0.1,verbose=True):
         params = (self.model.trainable_weights)#.numpy()
-        print(type(params[0]),np.shape(params), params[0])#, params.get_shape(), params)
-        train_ins, train_targs, val_ins, val_targs = split_training_data(features,targets,vfrac=vfrac)
+        #print(type(params[0]),np.shape(params), params[0])#, params.get_shape(), params)
+        train_ins, train_targs, val_ins, val_targs = split_training_data(features,targets,vfrac=vfrac)#mix=True
         for _ in range(epochs):
             for _ in range(math.floor(epochs / mbs)):
                 with tf.GradientTape() as tape:  # Read up on tf.GradientTape !!
                     feaset,tarset = gen_random_minibatch(train_ins,train_targs,mbs=mbs)
+                    #feaset=features
+                    #tarset=targets
                     loss = self.gen_loss(feaset,tarset,avg=False)
                     gradients = tape.gradient(loss,params)
-                    gradients = self.modify_gradients(gradients)
+                    gradients = self.modify_gradients(gradients, tarset)
                     self.model.optimizer.apply_gradients(zip(gradients,params))
             if verbose: self.end_of_epoch_display(train_ins,train_targs,val_ins,val_targs)
 
