@@ -196,7 +196,7 @@ class PegSolitaire(HexBoard):
 
 		ended, won = self.is_game_done()
 		if won:
-			reward = 10
+			reward = 1000
 		new_boardState = self.get_boardState()
 		return move_done, reward, new_boardState,ended
 
@@ -427,10 +427,11 @@ class VisualizePegSolitaire():
 		plt.pause(0.002)
 		#plt.close()
 
-	def show_played_game(self,states, actions,delay):
+	def show_played_game(self,states, actions,delay,shape,size,type):
 		#print("TRAJECTORY HAS ", len(states), " TRANSITIONS!")
 		#print(states[0])
 		plt.ion()
+
 		if len(states)== 0:
 			#print("0 transitions")
 			return None
@@ -452,6 +453,7 @@ class VisualizePegSolitaire():
 				#print("show ", actions[i][0])
 				self.update_vis_params(states[i],[actions[i][0],actions[i][1]])
 				nx.draw_networkx_nodes(g, self.pegPositions, node_size = self.node_sizes, nodelist=self.nodelist, node_color=self.colormap)
+				plt.title(str(type)+" "+str(shape)+" "+str(size))
 				plt.draw()
 				#print("before pause")
 				plt.pause(delay)
