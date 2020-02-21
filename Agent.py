@@ -37,7 +37,7 @@ class Critic_NN(SplitGD.SplitGD):
 		model.add(Dense(nn_struct[0],input_dim=self.obs_space))
 		for i in range(1,num_layers):
 			model.add(Dense(nn_struct[i], activation = activation_function))
-		model.add(Dense(output_dim, activation = 'sigmoid'))
+		model.add(Dense(output_dim, activation = None))
 		sgd = SGD(learning_rate = self.lr,momentum = 0.0, nesterov=False)
 		model.compile(loss='mse',optimizer=sgd)
 		print(model.summary())
@@ -102,8 +102,9 @@ class Critic_NN(SplitGD.SplitGD):
 
 class Actor_tab():
 	def __init__(self, obs_space, action_space, epsilon, learning_rate, e_discount):
-		self.table = np.random.rand(2**((obs_space)),obs_space,action_space)
-		print("policy table made")
+		self.table = np.zeros((2**((obs_space)),obs_space,action_space))
+		#self.table = np.random.rand(2**((obs_space)),obs_space,action_space)
+		#print("policy table made")
 		#for i in range(0, 2**obs_space):
 		#	for j in range(0, obs_space):
 		#		for k in range(0,action_space):
