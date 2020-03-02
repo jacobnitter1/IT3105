@@ -2,74 +2,8 @@ import numpy as np
 import networkx as nx
 import matplotlib.pyplot as plt
 import matplotlib.animation as anim
+import ast
 from IPython.display import clear_output
-
-class HexBoard():
-	def __init__(self, boardShape, boardSize, numHoles, placementHoles):
-		self.boardShape = boardShape
-		self.boardSize = boardSize
-		self.numHoles= numHoles
-		self.placementHoles = placementHoles # if None -> if numHoles <4 -> center, else random
-		self.boardState = self.init_boardState(boardSize, boardShape, numHoles)
-		self.place_holes()
-
-	def init_boardState(self,boardSize, boardShape, numHoles):
-		#1 = peg in place, 0 = empty hole, -1 = hole not in game
-		boardState = np.ones([boardSize, boardSize])
-		if boardShape == "Triangle":
-			boardState+=1
-			boardState=np.tril(boardState,k=0)-1
-		# add some randomness here, or default at center
-		return boardState
-	def place_holes(self):
-		placementHoles=[]
-		for i in self.placementHoles:
-			r,c = self.hole_num_to_placement(i)
-			self.boardState[r,c]=0
-
-
-
-	def get_boardState(self):
-		listBoardState = list(filter(lambda a: a != -1, (self.boardState).flatten()))
-		return listBoardState
-
-	def get_org_boardState(self):
-		return self.boardState
-
-	def get_num_pegs_left(self):
-		num_pegs = 0
-		for r in range(0,self.boardSize):
-			for c in range(0,self.boardSize):
-				i = self.boardState[r,c]
-				if i == 1:
-					num_pegs+=1
-
-		return num_pegs
-
-	def hole_num_to_placement(self, hole_num):
-		k = 0
-		bs = self.get_org_boardState()
-		for r in range(0,len(bs)):
-			for c in range(0,len(bs)):
-				if bs[r,c] != -1:
-					if k == hole_num:
-						return r,c
-					else:
-						k +=1
-
-	def placement_to_hole_num(self,r,c):
-		k = 0
-		for r_ in range(0,self.boardSize):
-			for c_ in range(0,self.boardSize):
-				if self.boardState[r_,c_] != -1:
-					if r==r_ and c==c_ :
-						#print("placement_to_hole_num returned : ",k," with boardsize", self.boardSize)
-						return k
-					else:
-						k+=1
-
-	def print_boardState(self):
-		print(self.boardState)
 
 class NIM():
 	def __init__(self,N,K, P,verbose_mode):
@@ -79,21 +13,28 @@ class NIM():
 		self.last_player = None # 1 or 2
 		self.starting_player = P
 		self.done = False
+		self.verbose_mode = verbose_mode
+		if self.verbose_mode:
+			print("Start Pile: ",self.N," stones")
 
 	def reset(self):
 		self.n = N
 		self.last_player = None
+		if self.verbose_mode:
+			print("Start Pile: ",self.N," stones")
 
 	def reset(self,N,K):
 		self.N = N
 		self.K = K
 		self.n = N
 		self.last_player = None
+		if self.verbose_mode:
+			print("Start Pile: ",self.N," stones")
 
 	def set_state(self, N, K ,n, last_player):
 		self.N = N
 		self.K = K
-		self.n = N
+		self.n = n
 		self.last_player = last_player
 	def set_state(self,n,last_player):
 		self.n = int(n)
@@ -105,6 +46,7 @@ class NIM():
 	def make_move(self, player, num_stones):
 		winner = None
 		done = False
+		reward =0
 		if self.last_player == player:
 			print("Not player ", player, "s turn!")
 			return None
@@ -118,17 +60,21 @@ class NIM():
 			else:
 				self.n -= num_stones
 				self.last_player = player
+				if self.verbose_mode:
+					print("Player ",player," selects ",num_stones," stone(s) : Remaining stones  = ", self.n)
 				if self.n == 0:
 					winner = player
 					reward = 1
-					done = True
+					self.done = True
+					print("Player ", winner," wins")
 				return self.n,reward, winner, done
 
 	def get_legal_actions(self):
-		return np.range(1,np.min(self.K,self.n))
+		actions = [i for i in range(1,np.minimum(self.K,self.n)+1)]
+		return actions
 
-	def get_legal_actions(self, board_state):
-		return np.range(1,np.min(self.K,board_state))
+	#def get_legal_actions(self, board_state):
+	#	return np.range(1,np.min(self.K,board_state))
 
 
 	def get_last_player(self):
@@ -139,20 +85,21 @@ class NIM():
 			return self.last_player
 		else:
 			return None
+	def is_game_done(self):
+		return self.done, self.last_player
 
 
 	def get_child_states(self):
 		actions = self.get_legal_actions()
 		children=[]
 		for action in actions:
-			n = np.copy(self.n)
+			n = int(np.copy(self.n))
 			n-=action
 			if n == 0:
-				#children.append([n, True, True])
-				children.append([str(n)])
+				self.done = True
+				children.append(n)
 			else:
-				#children.append([n, False, None])
-				children.append([str(n)])
+				children.append(n)
 		if len(children) == 0:
 			self.done = True
 			return []
@@ -163,17 +110,19 @@ class NIM():
 class Ledge():
 	def __init__(self, L, NC, B_init,P,verbose_mode):
 		self.board = np.zeros(L)
+
+		self.verbose_mode = verbose_mode
 		if B_init == None:
 			self.random_reset(L,NC,verbose_mode)
 		else:
-			self.reset(L,NC, verbose_mode)
+			self.reset(L,NC, B_init, verbose_mode)
 		self.starting_player = P
 		self.last_player = None
-		self.verbose_mode = verbose_mode
 		self.done = False
+	def is_game_done(self):
+		return self.done,self.last_player
 
 	def random_reset(self, L, NC, verbose_mode):
-		str=""
 		idx = np.random.randint(0,L)
 		self.board[idx] = 2
 		empty_slots = [i for i, e in enumerate(self.board) if e == 0]
@@ -185,52 +134,64 @@ class Ledge():
 
 		self.last_player = None
 		if verbose_mode:
-			str = "Start Board: "+str(self.board)
-		return str
+			print("Start Board: "+str(self.board))
+
 
 	def get_state(self):
-		return str(self.board)
+		return self.state_to_str(self.board)
+
 	def set_state(self,B_init_str, last_player):
-		self.state = [int(s) for s in B_init_str]
+		if B_init_str is None:
+			print("board in set state is None")
+			return None
+		B = []
+		for letter in B_init_str:
+			B.append(int(letter))
+		self.board = B
 		self.last_player = last_player
 
 	def get_last_player(self):
 		return self.last_player
 
-	def reset(self, L, NC,B_init):
-		str=""
+	def reset(self, L, NC,B_init,verbose_mode):
 		self.board = B_init
-		self.verbose_mode = verbose_mode
 		self.last_player = None
-		if verbose_mode:
-			str = "Start Board: "+str(self.board)
-		return str
+		#if self.verbose_mode:
+			#print("Start Board: "+str(self.board))
 
 	def is_legal_jump(self, from_spot,num_jumps):
-		if self.board[from_spot] != 0:
-			legal_move = True
-			for i in range(1,num_jumps):
-				if self.board[from_spot-i] != 0:
-					legal_move = False
+
+		legal_move = True
+		#print(self.board)
+		if self.board[from_spot] != 0 :#and from_spot-num_jumps>= 0:
+
+			if num_jumps == 1:
+				if self.board[from_spot-1] != 0:
+					return False
+			else:
+				for i in range(1,num_jumps):
+					if self.board[from_spot-i] != 0:
+			#			print("something between")
+						legal_move = False
+						#print(self.board[from_spot-i], " gives ", legal_move)
+						break
+			if self.board[from_spot-num_jumps] != 0:
+				legal_move = False
+				#print(from_spot,num_jumps,self.board[from_spot-num_jumps], " gives ", legal_move)
 		else:
 			legal_move= False
+		#print("From spot: ",from_spot," to spot : ", from_spot-num_jumps," : ", legal_move)
 		return legal_move
 
-	def is_legal_jump(self, from_spot,num_jumps, board_state):
-		if board_state[from_spot] != 0:
-			legal_move = True
-			for i in range(1,num_jumps):
-				if board_state[from_spot-i] != 0:
-					legal_move = False
-		else:
-			legal_move= False
-		return legal_move
 
-	def make_move(self,player,from_spot, num_jumps):
+
+	def make_move(self,player,move): # move = [from_smot, num jumps]
+		from_spot = move[0]
+		num_jumps = move[1]
 		done= False
 		winner = None
 		reward = 0
-		str= ""
+		str_p= ""
 		if self.last_player == player:
 			print("Not player ", player, "s turn!")
 			return None
@@ -240,65 +201,81 @@ class Ledge():
 				self.board[0]=0
 				self.last_player = player
 				winner = player
-				done = True
+				self.done = True
 				reward = 1
+				if self.verbose_mode :
+					if self.last_player == 1:
+						str_p += "P1"
+					else:
+						str_p += "P2"
+					str_p += " picks up gold: "+str(self.board)+"\nPlayer " + str(self.last_player) + " wins!"
+			elif self.board[0] == 1:
+				#print("HERHER ", self.verbose_mode)
+				self.board[0]=0
+				self.last_player = player
+				winner = None
+				self.done = False
+				reward = 0
+				if self.verbose_mode :
+					if self.last_player == 1:
+						str_p += "P1"
+					else:
+						str_p += "P2"
+					str_p += " picks up cobber: "+str(self.board)
+					#print(str_p)
+
+
 		else:
 			if self.is_legal_jump(from_spot,num_jumps):
+				#print("----> from to :",from_spot, from_spot-num_jumps)
 				if self.verbose_mode:
-					str = ""
+					str_p = ""
 				self.board[from_spot-num_jumps]= self.board[from_spot]
 				self.board[from_spot]=0
 				self.last_player = player
-		if verbose_mode :
-			if self.last_player == 1:
-				str += "P1"
-			else:
-				str += "P2"
-			if done:
-				str += "picks up gold: "+str(self.board)+"\n Player" + str(self.last_player) + "wins!"
-			str += " moves "
-			if self.board[from_spot-num_jumps] == 1:
-				str += "gold from cell "+str(from_spot)+" to "+str(from_spot-num_jumps)+": "+ str(self.board)
-			else:
-				str += "cobber from cell "+str(from_spot)+" to "+str(from_spot-num_jumps)+": "+ str(self.board)
-		return self.board, reward,winner, done,str
+				if self.verbose_mode :
+					if self.last_player == 1:
+						str_p += "P1"
+					else:
+						str_p += "P2"
+					str_p += " moves "
+					if self.board[from_spot-num_jumps] == 2:
+						str_p += "gold from cell "+str(from_spot)+" to "+str(from_spot-num_jumps)+": "+ str(self.board)
+					else:
+						str_p += "cobber from cell "+str(from_spot)+" to "+str(from_spot-num_jumps)+": "+ str(self.board)
+
+		if self.verbose_mode:
+				print(str_p)
+		return self.board, reward,winner, done
 
 	def get_legal_actions(self):
-		nonempty_slots = [i for i, e in enumerate(self.board) if e != 0]
 		legal_actions = []
-		for i in range(0,nonempty_slots):
-			if self.boardState[i]!=0:
-				legal_actions.append([from_spot,None])
+		for i in range(0,len(self.board)):
+			if i == 0:
+				if self.board[i] != 0:
+					legal_actions.append([i,None])
 			else:
-				for j in range(1, i):
-					if self.is_legal_jump(i,j):
-						legal_actions.append([i,j])
-					else:
-						break
+				if self.board[i]!= 0:
+					for j in range(1,i+1):
+						if self.is_legal_jump(i,j):
+							legal_actions.append([i,j])
+						else:
+							break
+
 		if len(legal_actions) == 0:
 			return []
 		else:
 			return legal_actions
 
-	def get_legal_actions(self,board_state):
-		nonempty_slots = [i for i, e in enumerate(board_state) if e != 0]
-		legal_actions = []
-		for i in range(0,nonempty_slots):
-			if board_state[i]!=0:
-				legal_actions.append([from_spot,None])
-			else:
-				for j in range(1, i):
-					if self.is_legal_jump(i,j):
-						legal_actions.append([i,j])
-					else:
-						break
-		if len(legal_actions) == 0:
-			return []
-		else:
-			return legal_actions
+
+	def state_to_str(self,state):
+		state_str = ""
+		for i in state:
+			state_str += str(i)
+		return state_str
 
 	def get_child_states(self):
-		actions = get_legal_actions()
+		actions = self.get_legal_actions()
 		children = []
 		for action in actions:
 			board_state = np.copy(self.board)
@@ -307,7 +284,8 @@ class Ledge():
 				if coin == 2:
 					board_state[0] = 0
 					#children.append( [board_state,True, True])
-					children.append(str(boardState))
+					children.append(self.state_to_str(board_state))
+					done = True
 				else:
 					board_state[0]=0
 					num_coins_left = np.count_nonzero(board_state)
@@ -316,13 +294,12 @@ class Ledge():
 					else:
 						done = False
 					#children.append([board_state, done, None])
-					children.append(str(board_state))
+					children.append(self.state_to_str(board_state))
 			else:
 				board_state = np.copy(self.board)
 				board_state[action[0]-action[1]]=board_state[action[0]]
 				board_state[action[0]]=0
-				#children.append([board_state,False, None])
-				children.append(str(board_state))
+				children.append(self.state_to_str(board_state))
 		if len(children) == 0:
 			self.done = True
 			return []
