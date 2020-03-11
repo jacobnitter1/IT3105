@@ -67,7 +67,8 @@ class NIM():
 					reward = 1
 					self.done = True
 					print("Player ", winner," wins")
-				return self.n,reward, winner, done
+					done=True
+				return reward, winner, done
 
 	def get_legal_actions(self):
 		actions = [i for i in range(1,np.minimum(self.K,self.n)+1)]
@@ -85,9 +86,25 @@ class NIM():
 			return self.last_player
 		else:
 			return None
+
 	def is_game_done(self):
+		if self.n == 0:
+
+			self.done = True
+		else:
+			self.done = False
 		return self.done, self.last_player
 
+	def is_state_end_state(self,state):
+		if state == 0:
+			return True
+		else:
+			return False
+	def is_next_state_too_stupid(self,state):
+		if state < self.K:
+			return True
+		else:
+			return False
 
 	def get_child_states(self):
 		actions = self.get_legal_actions()
@@ -119,8 +136,36 @@ class Ledge():
 		self.starting_player = P
 		self.last_player = None
 		self.done = False
+		if self.verbose_mode:
+			print(self.verbose_mode,"Start Board: "+str(self.board))
 	def is_game_done(self):
+		if '2' in self.get_state():
+			self.done = False
+		else:
+			self.done = True
+			#print("Player ", self.last_player," wins")
 		return self.done,self.last_player
+
+	def is_state_end_state(self,state):
+		if '2' in state:
+			return False
+		else:
+			return True
+	def is_next_state_too_stupid(self,state):
+		nonzeros= 0
+		for l in state:
+			if l != '0':
+				nonzeros += 1
+		if state[0]==2:
+			return True
+		elif nonzeros==2:
+			if state[0] == 1 and state[1] == 2:
+				return True
+			elif state[1]==1 and state[3] == 2:
+				return True
+		else:
+			return False
+
 
 	def random_reset(self, L, NC, verbose_mode):
 		idx = np.random.randint(0,L)
@@ -133,7 +178,7 @@ class Ledge():
 			self.board[i] = 1
 
 		self.last_player = None
-		if verbose_mode:
+		if self.verbose_mode:
 			print("Start Board: "+str(self.board))
 
 
@@ -202,6 +247,7 @@ class Ledge():
 				self.last_player = player
 				winner = player
 				self.done = True
+				done = True
 				reward = 1
 				if self.verbose_mode :
 					if self.last_player == 1:
@@ -215,6 +261,7 @@ class Ledge():
 				self.last_player = player
 				winner = None
 				self.done = False
+				done = False
 				reward = 0
 				if self.verbose_mode :
 					if self.last_player == 1:
@@ -234,19 +281,22 @@ class Ledge():
 				self.board[from_spot]=0
 				self.last_player = player
 				if self.verbose_mode :
-					if self.last_player == 1:
-						str_p += "P1"
+					if self.done:
+						print("Player ", self.last_player," wins!")
 					else:
-						str_p += "P2"
-					str_p += " moves "
-					if self.board[from_spot-num_jumps] == 2:
-						str_p += "gold from cell "+str(from_spot)+" to "+str(from_spot-num_jumps)+": "+ str(self.board)
-					else:
-						str_p += "cobber from cell "+str(from_spot)+" to "+str(from_spot-num_jumps)+": "+ str(self.board)
+						if self.last_player == 1:
+							str_p += "P1"
+						else:
+							str_p += "P2"
+						str_p += " moves "
+						if self.board[from_spot-num_jumps] == 2:
+							str_p += "gold from cell "+str(from_spot)+" to "+str(from_spot-num_jumps)+": "+ str(self.board)
+						else:
+							str_p += "cobber from cell "+str(from_spot)+" to "+str(from_spot-num_jumps)+": "+ str(self.board)
 
 		if self.verbose_mode:
 				print(str_p)
-		return self.board, reward,winner, done
+		return reward,winner, done
 
 	def get_legal_actions(self):
 		legal_actions = []
@@ -286,13 +336,16 @@ class Ledge():
 					#children.append( [board_state,True, True])
 					children.append(self.state_to_str(board_state))
 					done = True
+					self.done = True
 				else:
 					board_state[0]=0
 					num_coins_left = np.count_nonzero(board_state)
 					if num_coins_left == 0:
 						done = True
+						self.done = True
 					else:
 						done = False
+						self.done = False
 					#children.append([board_state, done, None])
 					children.append(self.state_to_str(board_state))
 			else:
