@@ -1,63 +1,134 @@
 import Environment
 import Agent
 import numpy as np
+import random
 
 
-GAME_TYPE = "Ledge" # OR LEDGE
+GAME_TYPE = "NIM" # OR LEDGE
 VERBOSE_MODE = True
 
-G = 100 # NUMBER OF GAMES IN A BATCH
-P = 1 # STARTING PLAYER OPTION
-M = 500 # NUMBER OF SIMULATIONS
+G = 10 # NUMBER OF GAMES IN A BATCH
+P = 1
+ # STARTING PLAYER OPTION
+M = 2500 # NUMBER OF SIMULATIONS
+EXPLORATION_RATE = 1.5
 
-N = 6 #STARTING NUMBER OF PIECES IN EACH GAME
-K = 2 # MAXIMUM NUMBER OF PIECES THAT PLAYER CAN REMOVE
+N = 90 #STARTING NUMBER OF PIECES IN EACH GAME
+K = 83 # MAXIMUM NUMBER OF PIECES THAT PLAYER CAN REMOVE
 
-B_INIT = [1,0,1,0,0,2,1,0] # BOARD INIT FOR LEDGE
+B_INIT =[0,2,0,1,0,1,1,1,0,0,0,0,1,0,1,0,1]# [1,0,1,0,2,0] # BOARD INIT FOR LEDGE
 
 
 done = False
 num_times_p1_won = 0
-for g in range(0,G):
+
+def play_one_game(P, M, EXPLORATION_RATE,N,K,B_INIT,verbose_mode):
+    done=False
+    if P == 3:
+        if random.random() < 0.5:
+            P=2
+        else:
+            P= 1
+
     if GAME_TYPE == "NIM":
-        game = Environment.NIM(N,K,P, VERBOSE_MODE)
+        if verbose_mode:
+            game = Environment.NIM(N,K,P, True)
+        else:
+            game = Environment.NIM(N,K,P,False)
         rollout_game = Environment.NIM(N,K,P, False)
     else:
-        game = Environment.Ledge(len(B_INIT), B_INIT.count(1), B_INIT,P,VERBOSE_MODE)
+        if verbose_mode:
+            game = Environment.Ledge(len(B_INIT), B_INIT.count(1), B_INIT,P,True)
+        else:
+            game = Environment.Ledge(len(B_INIT), B_INIT.count(1), B_INIT,P,False)
         rollout_game = Environment.Ledge(len(B_INIT), B_INIT.count(1), B_INIT,P,False)
-    MCTS = Agent.MCTS(P, game, rollout_game)
+    MCTS = Agent.MCTS(EXPLORATION_RATE, game, rollout_game)
 
     while not done:
         MCTS.node_expansion()
-
         #print("before choose action :",game.get_state(),game.get_legal_actions())
         if game.get_last_player() == None:
             if P == 1:
-                action = MCTS.choose_next_action(M, game.get_state(), 2)
+                action = MCTS.get_action(M, game.get_state(), 2)
             else:
 
-                action = MCTS.choose_next_action(M, game.get_state(), 1)
+                action = MCTS.get_action(M, game.get_state(), 1)
         else:
-            action = MCTS.choose_next_action(M, game.get_state(), game.get_last_player())
-        #print("After choose action : ",game.get_state(),game.get_legal_actions())
-        #print("CHOSEN ACTION : ",action, ", FOR STATE :" ,game.get_state())
+            action = MCTS.get_action(M, game.get_state(), game.get_last_player())
         if game.get_last_player() == None:
-            game.make_move(P,action)
+            reward, winner, done = game.make_move(P,action)
         else:
             if game.get_last_player() == 1:
-                #print("- 1")
-                game.make_move(2,action)
+                reward, winner, done = game.make_move(2,action)
             else:
                 #print("- 0")
-                game.make_move(1,action)
+                reward, winner, done = game.make_move(1,action)
                 #print(game.get_state())
-        done,winner=game.is_game_done()
+        #print(done)
         if done:
+            #print("DONE!",winner)
             if winner == 1:
-                num_times_p1_won += 1
-            break
-    if g == G:
-        break
+                return 1
+            else:
+                return 0
+
+if G == 1:
+    num_times_p1_won = 0
+    num_times_p1_won += play_one_game(P, M, EXPLORATION_RATE,N,K,B_INIT,True)
+else:
+    num_times_p1_won = 0
+    for i in range(0,G):
+        print("------------------------------")
+        num_times_p1_won += play_one_game(P, M, EXPLORATION_RATE,N,K,B_INIT,True)
 
 
-print("Player 1 won ", (num_times_p1_won/G)*100.0," % of the games.")
+if True:
+    print("------------------------------")
+else:
+    for g in range(0,G):
+        done=False
+        if P == 3:
+            if random.random() < 0.5:
+                P=2
+            else:
+                P= 1
+
+        if GAME_TYPE == "NIM":
+            game = Environment.NIM(N,K,P, False)
+            rollout_game = Environment.NIM(N,K,P, False)
+        else:
+            game = Environment.Ledge(len(B_INIT), B_INIT.count(1), B_INIT,P,False)
+            rollout_game = Environment.Ledge(len(B_INIT), B_INIT.count(1), B_INIT,P,False)
+        MCTS = Agent.MCTS(P, game, rollout_game)
+
+        while not done:
+            MCTS.node_expansion()
+
+            #print("before choose action :",game.get_state(),game.get_legal_actions())
+            if game.get_last_player() == None:
+                if P == 1:
+                    action = MCTS.get_action(M, game.get_state(), 2)
+                else:
+
+                    action = MCTS.get_action(M, game.get_state(), 1)
+            else:
+                action = MCTS.get_action(M, game.get_state(), game.get_last_player())
+            #print("After choose action : ",game.get_state(),game.get_legal_actions())
+            #print("CHOSEN ACTION : ",action, ", FOR STATE :" ,game.get_state())
+            if game.get_last_player() == None:
+                reward, winner, done = game.make_move(P,action)
+            else:
+                if game.get_last_player() == 1:
+                    #print("- 1")
+                    reward, winner, done = game.make_move(2,action)
+                else:
+                    #print("- 0")
+                    reward, winner, done = game.make_move(1,action)
+                    #print(game.get_state())
+            #print(done)
+            if done:
+                #print("DONE!",winner)
+                if winner == 1:
+                    num_times_p1_won += 1
+
+print("Player 1 won ",(num_times_p1_won/G)*100," % of the games.")
