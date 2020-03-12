@@ -49,6 +49,38 @@ class MCTS:
 		return idx
 
 	def tree_search(self):
+		last_node = self.root_node
+		current_node = self.root_node
+		if len(current_node.get_children()) == 0:
+			self.node_expansion(current_node)
+		while len(current_node.get_children()) != 0:
+			last_node = current_node
+			next_node_idx = self.tree_policy(current_node)
+			current_node = current_node.get_children()[next_node_idx]
+
+			if current_node == None:
+				self.rollout_game.set_state(last_node.get_state(),last_node.get_last_player())
+				children_states = self.rollout_game.get_child_states()
+				if last_node.get_last_player() == 1:
+					last_node.add_child(Node(children_states[next_node_idx],2,last_node), next_node_idx)
+				else:
+					last_node.add_child(Node(children_states[next_node_idx],1,last_node), next_node_idx)
+				current_node = last_node.get_children()[next_node_idx]
+				break
+			elif current_node.get_num_played() == 0:
+				self.rollout_game.set_state(last_node.get_state(),last_node.get_last_player())
+				children_states = self.rollout_game.get_child_states()
+				if last_node.get_last_player() == 1:
+					last_node.add_child(Node(children_states[next_node_idx],2,last_node), next_node_idx)
+				else:
+					last_node.add_child(Node(children_states[next_node_idx],1,last_node), next_node_idx)
+				current_node = last_node.get_children()[next_node_idx]
+				break
+
+		#self.node_expansion(current_node)
+		return current_node.get_state(), next_node_idx, current_node
+
+	def _tree_search(self):
 		node_children = self.root_node.get_children()
 		children_states=self.game.get_child_states()
 		if len(node_children) == 0:
@@ -69,18 +101,19 @@ class MCTS:
 		#print("In leaf_eval " ,leaf_node, type(leaf_node))
 		return self.rollout(leaf_node)
 
-	def run_simulation(self):
+	def run_simulation(self,M):
 		leaf_node_state, idx,leaf_node = self.tree_search()
-		result = self.leaf_evaluation(leaf_node_state)
-		#print("Result to be backpropped : ", result)
-		#print(result)
-		if leaf_node == None: #state, player_took_last_turn,parent
-			if self.root_node.get_last_player() == 1:
-				self.root_node.add_child(Node(leaf_node_state,2,self.root_node), idx)
-			else:
-				self.root_node.add_child(Node(leaf_node_state,1,self.root_node), idx)
-			leaf_node = self.root_node.get_child(idx)
-		self.backprop(result,leaf_node)
+		for i in range(0,M):
+			result = self.leaf_evaluation(leaf_node_state)
+			#print("Result to be backpropped : ", result)
+			#print(result)
+			if leaf_node == None: #state, player_took_last_turn,parent
+				if self.root_node.get_last_player() == 1:
+					self.root_node.add_child(Node(leaf_node_state,2,self.root_node), idx)
+				else:
+					self.root_node.add_child(Node(leaf_node_state,1,self.root_node), idx)
+				leaf_node = self.root_node.get_child(idx)
+			self.backprop(result,leaf_node)
 
 	def choose_greedy_action(self):
 		#print("Choose greedy action: ",self.root_node.get_state(), self.root_node.get_last_player())
@@ -110,25 +143,26 @@ class MCTS:
 			self.rollout_game.set_state(state,last_player)
 			#print(" SIM #",i,state," == ",self.rollout_game.get_state())
 			#print("NEW SIMULATION ", self.rollout_game.get_state())
-			self.run_simulation()
-		print(self.game.get_legal_actions())
-		self.root_node.print_Q_properties()
+			self.run_simulation(1)
+		#print(self.game.get_legal_actions())
+		#self.root_node.print_Q_properties()
 		action = self.choose_greedy_action()
 		return action
 
 
-	def node_expansion(self,child_node_state=None, idx=None):
-		children = self.game.get_child_states()
-		if len(self.root_node.get_children()) == 0:
+	def node_expansion(self,parent_node,child_node_state=None, idx=None):
+		self.rollout_game.set_state(parent_node.get_state(),parent_node.get_last_player())#, parent_node.get_last_player())
+		children = self.rollout_game.get_child_states()
+		if len(parent_node.get_children()) == 0:
 			for i in range(0,len(children)):
-				self.root_node.add_child(None,i)
+				parent_node.add_child(None,i)
 		else:
 			for i in range(0,len(children)):
 				if children[i] == child_node_state:
-					if self.root_node.get_last_player() == 1:
-						self.root_node.add_child(Node(child_node_state,2,self.root_node))
+					if parent_node.get_last_player() == 1:
+						parent_node.add_child(Node(child_node_state,2,parent_node))
 					else:
-						self.root_node.add_child(Node(child_node_state,1,self.root_node))
+						parent_node.add_child(Node(child_node_state,1,parent_node))
 
 	def rollout(self,root_node):
 		#print("NEW ROLLOUT - ", root_node)
@@ -228,11 +262,15 @@ class Node():
 
 	def get_childrens_UCT_values(self):
 		UCT_values=[]
-		for node in self.children:
-			if node is None:
-				UCT_values.append(np.sqrt(2.0*np.log(self.num_played)))
-			else:
-				UCT_values.append(np.sqrt(2.0*np.log(self.num_played)/(1+node.get_num_played())))
+		if self.num_played == 0:
+			#print("Choosing between children when node itself is not visited?")
+			return 0
+		else:
+			for node in self.children:
+				if node is None or self.num_played == 0:
+					UCT_values.append(np.sqrt(2.0*np.log(self.num_played)))
+				else:
+					UCT_values.append(np.sqrt(2.0*np.log(self.num_played)/(1+node.get_num_played())))
 		return UCT_values
 	def get_last_player(self):
 		return self.player_took_last_turn
