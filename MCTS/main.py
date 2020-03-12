@@ -4,19 +4,19 @@ import numpy as np
 import random
 
 
-GAME_TYPE = "NIM" # OR LEDGE
+GAME_TYPE = "Ledge" # OR LEDGE
 VERBOSE_MODE = True
 
 G = 10 # NUMBER OF GAMES IN A BATCH
 P = 1
  # STARTING PLAYER OPTION
 M = 2500 # NUMBER OF SIMULATIONS
-EXPLORATION_RATE = 1.5
+EXPLORATION_RATE = 1
 
-N = 90 #STARTING NUMBER OF PIECES IN EACH GAME
-K = 83 # MAXIMUM NUMBER OF PIECES THAT PLAYER CAN REMOVE
+N = 11 #STARTING NUMBER OF PIECES IN EACH GAME
+K = 4 # MAXIMUM NUMBER OF PIECES THAT PLAYER CAN REMOVE
 
-B_INIT =[0,2,0,1,0,1,1,1,0,0,0,0,1,0,1,0,1]# [1,0,1,0,2,0] # BOARD INIT FOR LEDGE
+B_INIT = [0,0,1,0,2,0]#[0,2,0,1,0,1,1,1,0,0,0,0,1,0,1,0,1]# # BOARD INIT FOR LEDGE
 
 
 done = False
@@ -45,7 +45,7 @@ def play_one_game(P, M, EXPLORATION_RATE,N,K,B_INIT,verbose_mode):
     MCTS = Agent.MCTS(EXPLORATION_RATE, game, rollout_game)
 
     while not done:
-        MCTS.node_expansion()
+        #MCTS.node_expansion()
         #print("before choose action :",game.get_state(),game.get_legal_actions())
         if game.get_last_player() == None:
             if P == 1:
