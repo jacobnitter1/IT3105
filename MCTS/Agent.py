@@ -8,7 +8,26 @@ class MCTS:
 		self.exploration_rate = exploration_rate
 		self.game = game
 		self.rollout_game = rollout_game
+		self.all_visited_states = {str(game.get_state()+str(game.get_last_player())):self.root_node}
 		#self.previously_visited_nodes = []
+
+	def get_dictionary(self):
+		return self.all_visited_states
+
+	def create_new_node(self, state,last_player,parent):
+		key = str(str(state)+"_"+str(last_player))
+		if key in self.all_visited_states:
+			child_node = self.all_visited_states[key]
+			#print("Child node ",child_node)
+			child_node.add_parent(parent)
+			r = child_node.get_num_wins()
+			p = child_node.get_num_played()
+			self.backprop(r,p,parent)
+			return child_node
+		else:
+			new_node = Node(state,last_player,parent)
+			self.all_visited_states[str(str(state)+'_'+str(last_player))]=new_node
+			return new_node
 
 	def set_exploration_rate(self,e):
 		self.exploration_rate = e
@@ -75,9 +94,9 @@ class MCTS:
 				self.rollout_game.set_state(last_node.get_state(),last_node.get_last_player())
 				children_states = self.rollout_game.get_child_states()
 				if last_node.get_last_player() == 1:
-					last_node.add_child(Node(children_states[next_node_idx],2,last_node), next_node_idx)
+					last_node.add_child(self.create_new_node(children_states[next_node_idx],2,last_node), next_node_idx)
 				else:
-					last_node.add_child(Node(children_states[next_node_idx],1,last_node), next_node_idx)
+					last_node.add_child(self.create_new_node(children_states[next_node_idx],1,last_node), next_node_idx)
 				current_node = last_node.get_children()[next_node_idx]
 				self.node_expansion(current_node)
 				#print("<------------Tree search : ", current_node.get_state(), " breaking because currend node was None")
@@ -86,9 +105,9 @@ class MCTS:
 				self.rollout_game.set_state(last_node.get_state(),last_node.get_last_player())
 				children_states = self.rollout_game.get_child_states()
 				if last_node.get_last_player() == 1:
-					last_node.add_child(Node(children_states[next_node_idx],2,last_node), next_node_idx)
+					last_node.add_child(self.create_new_node(children_states[next_node_idx],2,last_node), next_node_idx)
 				else:
-					last_node.add_child(Node(children_states[next_node_idx],1,last_node), next_node_idx)
+					last_node.add_child(self.create_new_node(children_states[next_node_idx],1,last_node), next_node_idx)
 				current_node = last_node.get_children()[next_node_idx]
 				self.node_expansion(current_node)
 				#print("------------->Tree search : ", current_node.get_state(), "breaking because current node has never been played before")
@@ -132,9 +151,9 @@ class MCTS:
 			result, num_plays = self.leaf_evaluation(leaf_node_state, 1)
 		if leaf_node == None: #state, player_took_last_turn,parent
 			if self.root_node.get_last_player() == 1:
-				self.root_node.add_child(Node(leaf_node_state,2,self.root_node), idx)
+				self.root_node.add_child(self.create_new_node(leaf_node_state,2,self.root_node), idx)
 			else:
-				self.root_node.add_child(Node(leaf_node_state,1,self.root_node), idx)
+				self.root_node.add_child(self.create_new_node(leaf_node_state,1,self.root_node), idx)
 			leaf_node = self.root_node.get_child(idx)
 		#print("Current leaf node is ", leaf_node_state,"with last player from leaf node ", leaf_node.get_last_player()," with result ", result)
 		self.backprop(result,num_plays,leaf_node)
@@ -197,9 +216,9 @@ class MCTS:
 			for i in range(0,len(children)):
 				if children[i] == child_node_state:
 					if parent_node.get_last_player() == 1:
-						parent_node.add_child(Node(child_node_state,2,parent_node))
+						parent_node.add_child(self.create_new_node(child_node_state,2,parent_node))
 					else:
-						parent_node.add_child(Node(child_node_state,1,parent_node))
+						parent_node.add_child(self.create_new_node(child_node_state,1,parent_node))
 
 	def rollout(self,root_node,last_player):
 		if last_player == 1:
@@ -208,16 +227,7 @@ class MCTS:
 			self.rollout_game.set_state(root_node,1)
 		return self.rollout_step()
 
-	def __backprop(self,result, root_node, child_node_idx, child_state):
-		#for node in self.previously_visited_nodes:
-		#	node.update_stats(result)
-		#print("In backprop ",root_node, type(root_node), self.root_node.get_state())
-		#print("Backpropped ", result, " to state ", child_state, " last player : ",root_node.get_last_player())
-		root_node.update_stats(result)
-		root_node.update_child_stats(result,child_node_idx,child_state,root_node.get_last_player())
-
-	def backprop(self,result,num_plays,leaf_node):
-
+	def _backprop(self,result,num_plays,leaf_node):
 		leaf_node.update_stats(result,num_plays)
 
 		if DEBUGGING_VAL :
@@ -237,6 +247,18 @@ class MCTS:
 
 		if DEBUGGING_VAL :
 			print("BACKPROPPING ", parent_line)
+
+	def backprop(self,result,num_plays, leaf_node):
+		self.backprop_step(result,num_plays,leaf_node)
+
+	def backprop_step(self,result,num_plays,node):
+		node.update_stats(result, num_plays)
+		parents = node.get_parent()
+		for parent in parents:
+			if parent is not None:
+				parent.update_stats(result,num_plays)
+				self.backprop_step(result,num_plays,parent)
+
 
 	def rollout_step(self):
 		children = self.rollout_game.get_child_states()
@@ -268,8 +290,7 @@ class Node():
 		self.children = []
 		self.player_took_last_turn = player_took_last_turn
 		self.leaf_node = False
-		self.parent = parent
-		#self.all_visited_states = {}
+		self.parent = [parent]
 
 	def add_child(self, node,idx):
 		if node is None:
@@ -285,6 +306,7 @@ class Node():
 		self.num_wins += result
 		self.num_played += num_plays
 	def update_child_stats(self,result, child_idx,child_state,parent_last_player):
+		print("Is this done??")
 		if self.children[child_idx] == None:
 			if parent_last_player == 1:
 				self.children[child_idx] =  Node(child_state,2,self)
@@ -313,7 +335,7 @@ class Node():
 		else:
 			for node in self.children:
 				if node is None:
-					UCT_values.append(2)
+					UCT_values.append(np.sqrt(np.log(self.num_played)))
 				else:
 					UCT_values.append(np.sqrt(np.log(self.num_played)/(1+node.get_num_played())))
 		return UCT_values
@@ -329,6 +351,14 @@ class Node():
 				Q_values.append(node.get_num_wins()/node.get_num_played())
 				#print(node.get_state()," state with ", node.get_last_player()," as last player leads to " ,node.get_num_wins()," wins out of ", node.get_num_played()," times = ",node.get_num_wins()/node.get_num_played())
 		return Q_values
+	def add_parent(self,parent):
+		#print("Parent added", parent.get_state(), self.get_state())
+		self.parent.append(parent)
+		parent_list = []
+		for i in self.get_parent():
+			parent_list.append(i.get_state())
+		#print("All parents of ", self.get_state(),": ", parent_list)
+
 
 	def get_parent(self):
 		return self.parent
