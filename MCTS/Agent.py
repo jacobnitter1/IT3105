@@ -48,7 +48,7 @@ class MCTS:
 		#print("Root node has been played ", root_node.get_num_played())
 		if root_node.get_last_player() == 2:
 			if DEBUGGING_VAL :
-				print("P1 max : ", Q_vals,np.multiply(self.exploration_rate,UCT_vals), Q_vals+np.multiply(self.exploration_rate,UCT_vals))
+				print("P1 max : ", Q_vals)#,np.multiply(self.exploration_rate,UCT_vals), Q_vals+np.multiply(self.exploration_rate,UCT_vals))
 			idx = np.argmax(Q_vals+np.multiply(self.exploration_rate,UCT_vals))
 		else:
 
@@ -61,12 +61,20 @@ class MCTS:
 	def tree_search(self):
 		last_node = self.root_node
 		current_node = self.root_node
+		self.rollout_game.set_state(current_node.get_state(), current_node.get_last_player())
 		if len(current_node.get_children()) == 0:
 			self.node_expansion(current_node)
-		while len(current_node.get_children()) != 0:
+		next_node_idx = None
+		d,l_p = self.rollout_game.is_game_done()
+		if d:
+			if DEBUGGING_VAL:
+				print("CHecking before starting ", current_node.get_state(), self.rollout_game.get_state())
+			return current_node.get_state(), None, current_node
+		while len(current_node.get_children()) != 0 :
 
 			if DEBUGGING_VAL :
 				print("Tree search : ", current_node.get_state())
+
 			last_node = current_node
 			next_node_idx = self.tree_policy(current_node)
 			current_node = current_node.get_children()[next_node_idx]
@@ -94,7 +102,13 @@ class MCTS:
 				#print("------------->Tree search : ", current_node.get_state(), "breaking because current node has never been played before")
 				break
 
+			self.rollout_game.set_state(current_node.get_state(), current_node.get_last_player())
+			d,l_p = self.rollout_game.is_game_done()
+			if DEBUGGING_VAL:
+				print("CHecking in while loop:",d, current_node.get_state(), self.rollout_game.get_state())
+			if d:
 
+				return current_node.get_state(), None, current_node
 		#self.node_expansion(current_node)
 		if DEBUGGING_VAL :
 			print(current_node.get_state(), " is leaf node and has been played ", current_node.get_num_played(), " times.")
@@ -178,11 +192,11 @@ class MCTS:
 			#print(" SIM #",i,state," == ",self.rollout_game.get_state())
 			#print("NEW SIMULATION ", self.rollout_game.get_state())
 			self.run_simulation()
-		print(self.game.get_legal_actions())
+		#print(self.game.get_legal_actions())
 		#print("Root node info - State : ",self.root_node.get_state(), " and last player : ",self.root_node.get_last_player())
 		if DEBUGGING_VAL :
 			print(self.root_node.get_state()," has the following Q stuffs :")
-		self.root_node.print_Q_properties()
+		#self.root_node.print_Q_properties()
 		action = self.choose_greedy_action()
 		return action
 
@@ -221,7 +235,7 @@ class MCTS:
 		leaf_node.update_stats(result,num_plays)
 
 		if DEBUGGING_VAL :
-			print("This is the leafe node ",leaf_node.get_state())
+			print("This is the leafe node ",leaf_node.get_state(), " with result : ", result)
 		node = leaf_node.get_parent()
 
 		parent_line = []
@@ -313,7 +327,7 @@ class Node():
 		else:
 			for node in self.children:
 				if node is None:
-					UCT_values.append(2)
+					UCT_values.append(0.5+np.sqrt(np.log(self.num_played)))
 				else:
 					UCT_values.append(np.sqrt(np.log(self.num_played)/(1+node.get_num_played())))
 		return UCT_values
