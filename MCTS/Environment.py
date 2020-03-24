@@ -139,18 +139,26 @@ class Ledge():
 		if self.verbose_mode:
 			print(self.verbose_mode,"Start Board: "+str(self.board))
 	def is_game_done(self):
-		if '2' in self.get_state():
-			self.done = False
-		else:
-			self.done = True
-			#print("Player ", self.last_player," wins")
+		state = self.get_state()
+		for i in range(0,len(state)):
+			if state[i] == '2':
+				self.done = False
+
+				#print("Inside game done func = ",state[i],self.get_state(),self.done)
+				return self.done, self.last_player
+		self.done = True
+
+
+		#print("Inside game done func",self.get_state(),self.done)
 		return self.done,self.last_player
 
 	def is_state_end_state(self,state):
-		if '2' in state:
-			return False
-		else:
-			return True
+		for i in range(0,len(state)):
+			if state[i] == '2':
+				return False
+		return True
+
+
 	def is_next_state_too_stupid(self,state):
 		nonzeros= 0
 		for l in state:
