@@ -192,9 +192,10 @@ class MCTS:
 			#print(" SIM #",i,state," == ",self.rollout_game.get_state())
 			#print("NEW SIMULATION ", self.rollout_game.get_state())
 			self.run_simulation()
-		#print(self.game.get_legal_actions())
 		#print("Root node info - State : ",self.root_node.get_state(), " and last player : ",self.root_node.get_last_player())
 		if DEBUGGING_VAL :
+
+			print(self.game.get_legal_actions())
 			print(self.root_node.get_state()," has the following Q stuffs :")
 		#self.root_node.print_Q_properties()
 		action = self.choose_greedy_action()
