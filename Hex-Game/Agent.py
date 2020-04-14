@@ -1,13 +1,23 @@
 import numpy as np
 import random
+import tensorflow as tf
+from tensorflow.keras.optimizers import SGD
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import  Dense
+from tensorflow.keras.activations import relu,tanh,linear,sigmoid
+import math
+import scipy
+#import splitgd
 DEBUGGING_VAL = False
 class MCTS:
 
 	def __init__(self, exploration_rate, game, rollout_game):
-		self.root_node = Node(game.get_state(),game.get_last_player(), None)
+		self.root_node = Node(game.get_NN_state(),game.get_last_player(), None)
 		self.exploration_rate = exploration_rate
 		self.game = game
 		self.rollout_game = rollout_game
+		self.replay_buffer = replay_buffer()
+
 		#self.previously_visited_nodes = []
 
 	def set_exploration_rate(self,e):
@@ -20,26 +30,26 @@ class MCTS:
 			idx = np.random.randint(0,len(children_states),1)[0]
 		return children_states[idx]
 
-	def rollout_policy(self):
-		children_states = self.rollout_game.get_child_states()
-		idx= 0
-		for i in range(0,len(children_states)):
-			if self.rollout_game.is_state_end_state(children_states[i]):
-				#print("----> ", children_states[i]," is an end state!")
-				return children_states[i]
-		any_good_actions = False
-		good_action_idx = []
-		for i in range(0,len(children_states)):
-			if not self.rollout_game.is_next_state_too_stupid(children_states[i]):
-				any_good_actions = True
-				good_action_idx.append(i)
-		if any_good_actions:
-			idx = np.random.randint(0,len(good_action_idx),1)[0]
-		else:
-			idx = np.random.randint(0,len(children_states),1)[0]
+	def rollout_policy(self,model):
+		actions = model.predict([[self.rollout_game.get_NN_state()]])
+		#print("1 - Action distribution : ", actions)
+		legal_actions = self.rollout_game.get_legal_actions()
+		#print(self.rollout_game.get_NN_state(), self.rollout_game.get_legal_actions())
+		for i in range(0, len(actions[0])):
+			#print( i , " in legal actions = ",legal_actions," ? ", i in legal_actions)
+			if i not in legal_actions:
+				#print(i, " not in ", legal_actions)
+				actions[0][i] = 0
+		#print("2 - Action distribution : ", actions)
+		actions = softmax(actions)
+		#print("run get child states")
+
+		#print("3 - Action distribution : ", actions)
+		children_states = self.rollout_game.get_padded_child_states()
+		idx = np.argmax(actions[0])
+		#print(" -",actions, len(actions[0]))
+		#print("-",children_states,len(children_states))
 		return children_states[idx]
-
-
 
 
 	def tree_policy(self,root_node):
@@ -58,13 +68,34 @@ class MCTS:
 
 		return idx
 
+	def get_target_values(self,root_node,action_space):
+		Q_vals = root_node.get_childrens_Q_values()
+		children = root_node.get_child_states()
+		target_values = np.zeros(action_space)
+		p_s = root_node.get_state()
+		for i in range(0,len(children)):
+			c_s = children[i]
+			action = self.rollout_game.action_from_s1_to_s2(p_s,c_s)
+			target_values[action] = Q_vals[i]
+
+		return softmax(target_values)
+
 	def tree_search(self):
 		last_node = self.root_node
 		current_node = self.root_node
+		#print("current node states : ",current_node.get_state())
 		self.rollout_game.set_state(current_node.get_state(), current_node.get_last_player())
+		#print("???")
+		#self.rollout_game.print_state()
+		current_node.get_children()
+		#self.rollout_game.print_state()
+		#print("+???")
 		if len(current_node.get_children()) == 0:
+			print("Node expansion happening")
 			self.node_expansion(current_node)
 		next_node_idx = None
+		#print("!!!")
+		#self.rollout_game.print_state()
 		d,l_p = self.rollout_game.is_game_done()
 		if d:
 			if DEBUGGING_VAL:
@@ -114,36 +145,22 @@ class MCTS:
 			print(current_node.get_state(), " is leaf node and has been played ", current_node.get_num_played(), " times.")
 		return current_node.get_state(), next_node_idx, current_node
 
-	def _tree_search(self):
-		node_children = self.root_node.get_children()
-		children_states=self.game.get_child_states()
-		if len(node_children) == 0:
-			self.node_expansion()
-			node_children = self.root_node.get_children()
-		for i in range(0,len(node_children)):
-			if node_children[i] is None:
-				chosen_node = i
-				#self.node_expansion(children_states[chosen_node],chosen_node)
-				#print("TREE POLICY -> ",children_states[chosen_node])
-				return children_states[chosen_node],chosen_node,self.root_node.get_child(chosen_node)
-		idx = self.tree_policy(self.root_node)
-		leaf_node_state=children_states[idx]
-		leaf_node=self.root_node.get_child(idx)
-		return leaf_node_state, idx,leaf_node
 
-	def leaf_evaluation(self,leaf_node, last_player):
+	def leaf_evaluation(self,leaf_node, last_player, model):
 		num_wins = 0
 		num_plays = 1
 		for i in range(0,num_plays):
-			num_wins += self.rollout(leaf_node,last_player)
+			num_wins += self.rollout(leaf_node,last_player,model)
+		print("ROLLOUT FINISHED")
 		return num_wins, num_plays
 
-	def run_simulation(self):
+	def run_simulation(self,model):
+		print("NEW SIMULATION")
 		leaf_node_state, idx,leaf_node = self.tree_search()
 		if leaf_node.get_last_player() == 1:
-			result, num_plays = self.leaf_evaluation(leaf_node_state, 2)
+			result, num_plays = self.leaf_evaluation(leaf_node_state, 2,model)
 		else:
-			result, num_plays = self.leaf_evaluation(leaf_node_state, 1)
+			result, num_plays = self.leaf_evaluation(leaf_node_state, 1,model)
 		if leaf_node == None: #state, player_took_last_turn,parent
 			if self.root_node.get_last_player() == 1:
 				self.root_node.add_child(Node(leaf_node_state,2,self.root_node), idx)
@@ -201,10 +218,32 @@ class MCTS:
 		action = self.choose_greedy_action()
 		return action
 
+	def run_simulations(self, M, state, last_player, rollout_policy):
+		self.game.set_state(state,last_player)
+		self.root_node = Node(state,last_player,None)
+		#self.previously_visited_nodes.append(self.root_node)
+		for i in range(0,M):
+			self.rollout_game.set_state(state,last_player)
+			self.run_simulation(rollout_policy)
+		#print("Root node info - State : ",self.root_node.get_state(), " and last player : ",self.root_node.get_last_player())
+		if DEBUGGING_VAL :
+
+			print(self.game.get_legal_actions())
+			print(self.root_node.get_state()," has the following Q stuffs :")
+		#self.root_node.print_Q_properties()
+		action = self.choose_greedy_action()
+		return action
 
 	def node_expansion(self,parent_node,child_node_state=None, idx=None):
+		#print(" mhmhmhmh : ", parent_node.get_state())
 		self.rollout_game.set_state(parent_node.get_state(),parent_node.get_last_player())#, parent_node.get_last_player())
+		#self.rollout_game.print_state()
+		#print("mmhmhmhmmhmhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh")
+		#self.rollout_game.print_state()
+		#print("mmhmhmhmmhmhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh2")
 		children = self.rollout_game.get_child_states()
+		#self.rollout_game.print_state()
+		#print("mmhmhmhmmhmhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh3")
 		if len(parent_node.get_children()) == 0:
 			for i in range(0,len(children)):
 				parent_node.add_child(None,i)
@@ -216,12 +255,13 @@ class MCTS:
 					else:
 						parent_node.add_child(Node(child_node_state,1,parent_node))
 
-	def rollout(self,root_node,last_player):
+	def rollout(self,root_node,last_player, model):
+		#print(" root node : ", root_node)
 		if last_player == 1:
 			self.rollout_game.set_state(root_node,2)
 		else:
 			self.rollout_game.set_state(root_node,1)
-		return self.rollout_step()
+		return self.rollout_step(model)
 
 	def __backprop(self,result, root_node, child_node_idx, child_state):
 		#for node in self.previously_visited_nodes:
@@ -252,11 +292,14 @@ class MCTS:
 
 		if DEBUGGING_VAL :
 			print("BACKPROPPING ", parent_line)
-
-	def rollout_step(self):
+	def rollout_step(self, model):
+		#print("Rollout step, last player ", self.rollout_game.get_last_player())
+		#self.rollout_game.print_state()
 		children = self.rollout_game.get_child_states()
 		if self.rollout_game.is_game_done()[0]:#print("End of Rollout : ",self.rollout_game.get_state(), self.rollout_game.get_winner(), self.rollout_game.is_game_done())
 			winner = self.rollout_game.get_winner()
+			#print(winner, " won!!", self.rollout_game.is_game_done())
+			#self.rollout_game.print_state()
 			#print("Rollout game is done : ", self.rollout_game.get_state(), " last player was : ", self.rollout_game.get_last_player(), self.rollout_game.get_winner())
 			if winner == 1:
 				return 1
@@ -264,14 +307,21 @@ class MCTS:
 				return 0
 		else:
 			last_state = self.rollout_game.get_state()
-			next_state = self.rollout_policy()#self.default_policy()#self.rollout_policy()#[0]
+			#self.rollout_game.print_state()
+
+			next_state = self.rollout_policy(model)#self.default_policy()#self.rollout_policy()#[0]
+			#print("Last player befor emove : ", self.rollout_game.get_last_player())
 			if self.rollout_game.get_last_player() == 1:
 				self.rollout_game.set_state(next_state,2)
+				#print("Last player : 2  == ", self.rollout_game.get_last_player())
 			else:
 				self.rollout_game.set_state(next_state,1)
+				#print("last player : 1 == ",  self.rollout_game.get_last_player())
 			if DEBUGGING_VAL :
 				print("Rollout step from : ",last_state," to : ",next_state," with last player ", self.rollout_game.get_last_player())
-			return self.rollout_step()
+			#self.rollout_game.print_state()
+			return self.rollout_step(model)
+
 
 class Node():
 	def __init__(self, state, player_took_last_turn,parent):
@@ -282,7 +332,6 @@ class Node():
 		self.player_took_last_turn = player_took_last_turn
 		self.leaf_node = False
 		self.parent = parent
-		#self.all_visited_states = {}
 
 	def add_child(self, node,idx):
 		if node is None:
@@ -359,3 +408,65 @@ class Node():
 				str2.append([node.get_num_wins(),node.get_num_played()])
 		print("Q Values : ",str)
 		print("Node statistics : ",str2)
+
+class replay_buffer():
+	def __init__(self):
+		self.states = []
+		self.action_distributions = []
+	def get_minibatch(self, size):
+		l = random.sample(range(0,len(self.states)),size)
+		return self.states[l], self.action_distributions[l]
+
+	def save_experienve(self, state, D):
+		self.states.append(state)
+		self.action_distributions.append(D)
+	def reset_buffer(self):
+		self.states = []
+		self.action_distributions=[]
+
+
+
+def softmax(x):
+	"""Compute softmax values for each sets of scores in x."""
+
+	return x/x.sum()
+
+class Policy_Network():
+
+	def __init__(self, boardSize,lr = 0.001, nn_struct = [1024,1024]):
+		self.boardSize = boardSize
+		self.output_dim = boardSize*boardSize
+		self.input_dim = boardSize*boardSize*2+2
+		self.nn_struct = nn_struct
+		self.lr = lr
+		self.model = self.createNN()
+
+	def createNN(self,activation_function = 'sigmoid'):
+		model = Sequential()
+		nn_struct = self.nn_struct
+		num_layers = len(nn_struct)
+		model.add(Dense(nn_struct[0],input_dim=self.input_dim))
+		for i in range(1,num_layers):
+			model.add(Dense(nn_struct[i], activation = activation_function))
+		model.add(Dense(self.output_dim, activation = 'softmax'))
+		sgd = SGD(learning_rate = self.lr,momentum = 0.0, nesterov=False)
+		model.compile(loss='mse',optimizer=sgd)
+		print(model.summary())
+		return model
+
+	def predict(self,state):
+		return self.model.predict(state)
+
+	def get_action(self,state, legal_actions):
+		actions= self.model.predict([[state]])
+		for i in range(0, len(actions[0])):
+			#print( i , " in legal actions = ",legal_actions," ? ", i in legal_actions)
+			if i not in legal_actions:
+				#print(i, " not in ", legal_actions)
+				actions[0][i] = 0
+		#print("2 - Action distribution : ", actions)
+		actions = softmax(actions)
+		return np.argmax(actions)
+
+	def train(self, state_batch, target_batch):
+		self.model.fit(state_batch,target_batch)
