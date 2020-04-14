@@ -83,6 +83,10 @@ class HexGame(HexBoard):
             self.last_player = 1
         self.neighbor_paths = np.array([[1,1],[-1,-1],[-1,0],[1,0],[0,1],[0,-1]])
 
+    def reset_board(self):
+        self.boardState = np.zeros((self.boardSize,self.boardSize))
+
+
     def do_action(self, action, player):
         if player == self.last_player:
             print("Not player ", player,"'s turn!")
@@ -98,11 +102,15 @@ class HexGame(HexBoard):
                             self.boardState[i,j] = player
                         else:
                             print("Hole already filled! Not legal action.")
+                            #print(self.boardState)
+                            print("Action : ", action)
+                            print("--------------------")
                             return None
         self.last_player = player
         return self.boardState, self.get_winner()
 
-
+    def get_state(self):
+        return self.get_NN_state()
     def get_winner(self):
         for i in range(0,len(self.boardState)):
             #print(" Starting point ", i)
@@ -114,6 +122,7 @@ class HexGame(HexBoard):
 
     def go_to_neighbor_p1(self,i,j, prev_visited): # i = 0 at beginning
         connection = False
+        #print("BoardState " , self.boardState)
         if self.boardState[i,j] != 1:
             #print("her", i,j,self.boardState[i,j])
             return False
@@ -169,9 +178,81 @@ class HexGame(HexBoard):
                                     connection = True
         return connection
 
+    def action_from_s1_to_s2(self,s1,s2):
+
+        _s1=np.zeros(self.boardSize*self.boardSize)
+        _s2 = np.zeros(self.boardSize*self.boardSize)
+        for i in range(0,int(len(s1)/2)-1):
+            if s1[i*2] == 0:
+                if s1[i*2+1] == 0:
+                    pass
+                else:
+                    _s1[i]=2
+            else:
+                _s1[i] = 1
+
+            if s2[i*2] == 0:
+                if s2[i*2+1] == 0:
+                    pass
+                else:
+                    _s2[i]=2
+            else:
+                _s2[i] = 1
+        for i in range(0,len(_s1)):
+            if _s1[i] != _s2[i]:
+                return i
+        return None
+
+    def print_state(self):
+        print(self.boardState)
+    def get_boardState(self):
+        return self.boardState
+
+    def get_child_states(self):
+        #print("!!!!!!!!!!! get child states")
+        org_state = self.get_NN_state()
+        l_p = self.last_player
+        children_states = []
+        actions = self.get_legal_actions()
+        #print("Actions :: ",actions, actions[0])
+        for i in actions:
+            self.set_state(org_state,l_p)
+            self.last_player = l_p
+            if l_p == 1:
+                self.do_action(i,2)
+            else:
+                self.do_action(i,1)
+            children_states.append(self.get_NN_state())
+        self.set_state(org_state,l_p)
+        self.last_player= l_p
+        return children_states
+
+    def get_padded_child_states(self):
+        org_state = self.get_NN_state()
+        l_p = self.last_player
+        children_states = []
+        actions = self.get_legal_actions()
+        #print("Actions :: ",actions)
+        for i in range(0,self.boardSize*self.boardSize):
+            if i in actions:
+                self.set_state(org_state,l_p)
+                self.last_player = l_p
+                if l_p == 1:
+                    self.do_action(i,2)
+                else:
+                    self.do_action(i,1)
+                children_states.append(self.get_NN_state())
+                self.set_state(org_state,l_p)
+            else:
+                children_states.append([])
+        self.last_player= l_p
+        return children_states
 
 
 
+    def get_legal_actions(self):
+        a,w = self.get_action_space()
+        return a
 
     def get_action_space(self):
         actions=[]
@@ -193,11 +274,11 @@ class HexGame(HexBoard):
                     state.append(0)
                     state.append(0)
                 elif self.boardState[i,j] == 1:
-                    state.append(0)
                     state.append(1)
+                    state.append(0)
                 else:
-                    state.append(1)
                     state.append(0)
+                    state.append(1)
         if self.last_player == 1:
             state.append(0)
             state.append(1)
@@ -210,7 +291,7 @@ class HexGame(HexBoard):
     def get_last_player(self):
         return self.last_player
 
-    def get_child_states(self):
+    def _get_child_states(self):
         actions = self.get_action_space()
         children_states = []
         for a in actions:
@@ -262,7 +343,8 @@ class HexGame(HexBoard):
 
     def set_state(self, state,l_p):
         s = []
-        print(state, len(state),len(state)/2,type(len(state)/2))
+        #print(state)
+        #print(state, len(state),len(state)/2,type(len(state)/2))
         for i in range(0,int(len(state)/2)):
             if state[i*2] == 0:
                 if state[i*2+1] == 0:
@@ -275,6 +357,6 @@ class HexGame(HexBoard):
         for i in range(0,len(self.boardState)):
             for j in range(0,len(self.boardState)):
                 self.boardState[i,j] = s[i*len(self.boardState)+j]
-
+        #print(self.boardState)
         self.last_player = l_p
         return self.boardState
