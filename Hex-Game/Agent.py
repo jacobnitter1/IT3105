@@ -16,9 +16,24 @@ class MCTS:
 		self.exploration_rate = exploration_rate
 		self.game = game
 		self.rollout_game = rollout_game
-		self.replay_buffer = replay_buffer()
 
 		#self.previously_visited_nodes = []
+	def get_distribution(self):
+		Q_values = np.zeros(len(self.game.get_boardState())*len(self.game.get_boardState()))
+		children_nodes = self.root_node.get_children()
+		#print(children_nodes)
+		Q = self.root_node.get_childrens_Q_values()
+		for i in range(0,len(children_nodes)):
+			if children_nodes[i] != None:
+				a = self.rollout_game.action_from_s1_to_s2(self.root_node.get_state(), children_nodes[i].get_state())
+
+				#print("!!!",self.root_node.get_state(), children_nodes[i].get_state(),a)
+				Q_values[a]=Q[i]
+
+		#print("hehehehehehe",Q_values)
+		#print("hehehehehehe2",softmax(Q_values))
+		return softmax(Q_values)
+
 
 	def set_exploration_rate(self,e):
 		self.exploration_rate = e
@@ -151,11 +166,11 @@ class MCTS:
 		num_plays = 1
 		for i in range(0,num_plays):
 			num_wins += self.rollout(leaf_node,last_player,model)
-		print("ROLLOUT FINISHED")
+		#print("ROLLOUT FINISHED")
 		return num_wins, num_plays
 
 	def run_simulation(self,model):
-		print("NEW SIMULATION")
+		#print("NEW SIMULATION")
 		leaf_node_state, idx,leaf_node = self.tree_search()
 		if leaf_node.get_last_player() == 1:
 			result, num_plays = self.leaf_evaluation(leaf_node_state, 2,model)
@@ -410,30 +425,69 @@ class Node():
 		print("Node statistics : ",str2)
 
 class replay_buffer():
-	def __init__(self):
+	def __init__(self, max_size):
 		self.states = []
 		self.action_distributions = []
-	def get_minibatch(self, size):
-		l = random.sample(range(0,len(self.states)),size)
-		return self.states[l], self.action_distributions[l]
+		self.max_size = max_size
+		self.is_full = False
+		self.current_size = 0
 
-	def save_experienve(self, state, D):
-		self.states.append(state)
-		self.action_distributions.append(D)
+	def get_minibatch(self, size):
+		if size >self.max_size or (not self.is_full and size > self.current_size):
+			print("Requesting to big minibatch!")
+		indices = random.sample(range(0,len(self.states)),size)
+		return_States = []
+		return_Ds = []
+		for i in range(0,len(indices)):
+			return_States.append(self.states[indices[i]])
+			return_Ds.append(self.action_distributions[indices[i]])
+		#print(indices, type(indices), type(indices[0]))
+		#return self.states[indices], self.action_distributions[indices]
+		#print(return_States)
+		#print(np.shape(self.action_distributions)," ---> ", np.shape(return_Ds))
+		#print(np.shape(self.states)," ---> ", np.shape(return_States))
+		return np.array(return_States),np.array(return_Ds)
+
+	def print_RBUF(self):
+		if self.is_full:
+			I = self.max_size
+		else:
+			I = self.current_size
+
+		for i in range(0,I):
+			print("(State, D): ", self.states[i], self.action_distributions[i])
+
+	def save_experience(self, state, D):
+		if self.is_full:
+			self.states[self.current_size] = state
+			self.action_distributions[self.current_size] = D
+		else:
+			self.states.append(state)
+			self.action_distributions.append(D)
+		if self.current_size == self.max_size:
+			self.is_full = True
+			self.current_size=0
+		else:
+			self.current_size +=1
+
 	def reset_buffer(self):
 		self.states = []
 		self.action_distributions=[]
+		self.current_size = 0
 
 
 
 def softmax(x):
 	"""Compute softmax values for each sets of scores in x."""
+	sum = x.sum()
+	if sum == 0:
+		sum=1.0
 
-	return x/x.sum()
+	return x/sum
 
 class Policy_Network():
 
-	def __init__(self, boardSize,lr = 0.001, nn_struct = [1024,1024]):
+	def __init__(self, boardSize,lr = 0.001, nn_struct = [100,100]):
 		self.boardSize = boardSize
 		self.output_dim = boardSize*boardSize
 		self.input_dim = boardSize*boardSize*2+2
@@ -457,7 +511,23 @@ class Policy_Network():
 	def predict(self,state):
 		return self.model.predict(state)
 
-	def get_action(self,state, legal_actions):
+	def get_action(self,state, legal_actions,epsilon):
+		if random.random() < epsilon:
+			a= random.sample(legal_actions,1)
+			#print("random ", a)
+			return a[0]
+		else:
+			actions= self.model.predict([[state]])
+			for i in range(0, len(actions[0])):
+				#print( i , " in legal actions = ",legal_actions," ? ", i in legal_actions)
+				if i not in legal_actions:
+					#print(i, " not in ", legal_actions)
+					actions[0][i] = 0
+			#print("2 - Action distribution : ", actions)
+			actions = softmax(actions)
+			return np.argmax(actions)
+
+	def get_distribution_and_action(self, state, legal_actions):
 		actions= self.model.predict([[state]])
 		for i in range(0, len(actions[0])):
 			#print( i , " in legal actions = ",legal_actions," ? ", i in legal_actions)
@@ -466,7 +536,13 @@ class Policy_Network():
 				actions[0][i] = 0
 		#print("2 - Action distribution : ", actions)
 		actions = softmax(actions)
-		return np.argmax(actions)
+		return actions, np.argmax(actions)
+
+	def save_weights(self, path):
+		self.model.save_weights(path)
+
+	def load_weights(self,path):
+		self.model.load_weights(path)
 
 	def train(self, state_batch, target_batch):
 		self.model.fit(state_batch,target_batch)
