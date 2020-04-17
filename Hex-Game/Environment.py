@@ -371,3 +371,204 @@ class HexGame(HexBoard):
 		#print(self.boardState)
 		self.last_player = l_p
 		return self.boardState
+
+class VisualizeHexGame():
+	def __init__(self,board, boardShape):
+		self.boardState = board
+		self.boardShape = boardShape
+		self.colormap = self.pegColorMap()
+		self.node_sizes = self.node_sizes_()
+		self.pegPositions, self.nodelist = self.pegPositionsNX()
+
+	def update_boardState(self,boardState):
+		self.boardState = boardState
+
+	def pegColorMap(self):
+		boardState = self.boardState
+
+		#print("---> pegColorMap : ",boardState)
+		#print( len(self.boardState))
+		#print( (self.boardState[0][0]))
+		colormap = []
+		for r in range(0, len(self.boardState)):
+			for c in range(0, len(self.boardState)):
+				i = int(self.boardState[r][c])
+				if i == 1 :
+					colormap.append('blue')
+				elif i == 2:
+					colormap.append('red')
+				else:
+					colormap.append('black')
+
+		#print(colormap)
+		return colormap
+
+	def node_sizes_(self):
+		org_boardState= self.boardState
+		boardState = list(filter(lambda a: a != -1, org_boardState.flatten()))
+		node_sizes = []
+		for i in boardState:
+			node_sizes.append(1000)
+		return node_sizes
+
+	def pegPositionsNX(self):
+		pos={}
+		nodelist=[]
+		peg_num=0
+		boardSize =len(self.boardState)
+		first_pos =[0,0]
+		for dia_row in range(0,boardSize):
+			for dia_col in range(0,boardSize):
+				first_pos[0] = -dia_row+dia_col
+				first_pos[1]= dia_row+dia_col
+				pos[peg_num] = [first_pos[0],first_pos[1]]
+				#print(peg_num,first_pos)
+				nodelist.append(peg_num)
+				peg_num+=1
+		return pos, nodelist
+
+	def _pegPositionsNX(self):
+		pos={}
+		nodelist=[]
+		peg_num=0
+		boardSize = len(self.boardState)
+		for r in range(0,boardSize):
+			if r == 0:
+				pos[peg_num]=[0,0]
+				nodelist.append(peg_num)
+				peg_num +=1
+			elif r%2 != 0:#Oddetallsrader
+				for c in range(int((r+1)/2),0,-1):
+					pos[peg_num]=[-1-2*(c-1),r] #pos[peg_num]=[r, -1 -2*(c-1)]
+					nodelist.append(peg_num)
+					peg_num+=1
+				for c in range(0,int((r+1)/2)):
+					pos[peg_num]=[1+2*c,r]#pos[peg_num] = [r,1+2*c]
+					nodelist.append(peg_num)
+					peg_num +=1
+			elif r%2 == 0: #partallsrader
+				for c in range(int(r/2),0,-1):
+					pos[peg_num]=[-2-2*(c-1),r]#pos[peg_num]=[r,-2-2*(c-1)]
+					nodelist.append(peg_num)
+					peg_num +=1
+				pos[peg_num]=[0,r] # [r,0]
+				nodelist.append(peg_num)
+				peg_num+=1
+				for c in range(0,int(r/2)):
+					pos[peg_num]=[2+2*c,r]#pos[peg_num]=[r,2+2*c]
+					nodelist.append(peg_num)
+					peg_num+=1
+
+		num_pegs_in_row = r
+		#print(num_pegs_in_row)
+
+		for row in range(r+1, boardSize*2-1):
+			if num_pegs_in_row <= 1:
+				pos[peg_num]=[0,row]
+				nodelist.append(peg_num)
+				break
+			else:
+				if row%2 == 0:
+					for c in range(int(num_pegs_in_row/2),0,-1):
+						pos[peg_num]=[-2-2*(c-1),row]#[row,-2-2*(c-1)]#
+						nodelist.append(peg_num)
+						peg_num +=1
+					pos[peg_num]=[0,row] # [r,0]
+					nodelist.append(peg_num)
+					peg_num+=1
+					for c in range(0,int(num_pegs_in_row/2)):
+						pos[peg_num]=[2+2*c,row]
+						nodelist.append(peg_num)
+						peg_num+=1
+				elif row%2 != 0:
+					for c in range(int(num_pegs_in_row/2),0,-1):
+						pos[peg_num]=[ -1 -2*(c-1),row]#[-1-2*(c-1),row] #pos[peg_num]=
+						nodelist.append(peg_num)
+						peg_num+=1
+					for c in range(0,int(num_pegs_in_row/2)):
+						pos[peg_num]=[1+2*c,row]#[1+2*c,row]#pos[peg_num] =
+						nodelist.append(peg_num)
+						peg_num +=1
+				num_pegs_in_row-=1
+
+		return pos,nodelist
+
+	def update_vis_params(self, boardState):
+
+		self.update_boardState(boardState)
+		self.colormap = self.pegColorMap()
+		self.node_sizes = self.node_sizes_()
+		self.pegPositions, self.nodelist = self.pegPositionsNX()
+
+	def get_vis_params(self,boardState):
+		self.update_vis_params(boardState)
+		return self.pegPositions, self.node_sizes, self.nodelist, self.colormap
+
+
+	def drawBoard(self,boardState):
+		self.update_vis_params(boardState)
+		plt.figure(figsize =(124,124))
+		g = nx.Graph()
+
+		#print("POSITIONS:",self.pegPositions)
+		#print("SIZES:", self.node_sizes)
+		#print("NODELIST:",self.nodelist)
+		#print("COLORMAP : ", self.colormap)
+		nx.draw_networkx_nodes(g, self.pegPositions, node_size = self.node_sizes, nodelist=self.nodelist, node_color=self.colormap)
+
+		plt.draw()
+		plt.pause(0.2)
+		#plt.close()
+
+	def show_played_game(self,states, delay,shape,size,type):
+		print("TRAJECTORY HAS ", len(states), " TRANSITIONS!")
+		print(states, states[0])
+
+		plt.ion()
+
+		if len(states)== 0:
+			#print("0 transitions")
+			return None
+		elif len(states)==1:
+			#print("1 transitions")
+			#print(len(states), states[0])
+			self.drawBoard(states[0])
+		else:
+			#print("many transitions")
+			#self.update_vis_params(states[0],action[0])
+			g = nx.Graph()
+			#nx.draw_networkx_nodes(g, self.pegPositions, node_size = self.node_sizes, nodelist=self.nodelist, node_color=self.colormap)
+
+			#plt.show()
+			for i in range(0,len(states)):
+				#print("---->",states[i])
+				#print("--->",states[i], actions[i])
+				#print("state -> ",states[i])
+				#print("show ", actions[i][0])
+				print("---",states[i])
+				self.update_vis_params(states[i])
+				nx.draw_networkx_nodes(g, self.pegPositions, node_size = self.node_sizes, nodelist=self.nodelist, node_color=self.colormap)
+				plt.title(str(type)+" "+str(shape)+" "+str(size))
+				plt.draw()
+				#print("before pause")
+				plt.pause(delay)
+				#print("after pause : ", delay)
+				plt.clf()
+
+def show_policy( policy, boardShape,boardSize, startingPlayer,env):
+	t_states = []
+	t_states.append(np.copy(env.get_boardState()))
+	while not env.is_game_done():
+
+		state=env.get_NN_state()
+		last_player = env.get_last_player()
+		legal_actions = env.get_legal_actions()
+		a= policy_network.get_action(state,legal_actions,0)
+		if env.last_player == 1:
+			env.do_action(a,2)
+		else:
+			env.do_action(a,1)
+		t_states.append(np.copy(env.get_boardState()))
+	#print(t_states)
+	vis = Environment.VisualizePegSolitaire(env.get_boardState(),shape)
+	vis.show_played_game(t_states,DELAY_BETWEEN_MOVE,shape,size,type)
