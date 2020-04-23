@@ -629,6 +629,7 @@ class VisualizeHexGame():
 				plt.pause(delay)
 				#print("after pause : ", delay)
 				plt.clf()
+			plt.close()
 
 def show_policy( policy, boardShape,boardSize, startingPlayer,env):
 	t_states = []

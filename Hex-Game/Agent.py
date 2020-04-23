@@ -3,7 +3,7 @@ import random
 import tensorflow as tf
 from tensorflow.keras.optimizers import SGD, Adam, RMSprop, Adagrad
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import  Dense
+from tensorflow.keras.layers import  Dense, Conv1D, Reshape
 from tensorflow.keras.activations import relu,tanh,linear,sigmoid
 import math
 import scipy
@@ -22,11 +22,22 @@ class MCTS:
 
 	def set_epsilon(self,epsilon):
 		self.epsilon = epsilon
-	def get_distribution(self):
+
+	def get_distribution(self, legal_actions):
 		Q_values = np.zeros(len(self.game.get_boardState())*len(self.game.get_boardState()))
 		children_nodes = self.root_node.get_children()
 		#print(children_nodes)
 		Q = self.root_node.get_childrens_visit_counts()
+		for i in range(0,len(legal_actions)):
+			Q_values[legal_actions[i]]=Q[i]
+
+		return softmax(Q_values)
+	def _get_distribution(self):
+		Q_values = np.zeros(len(self.game.get_boardState())*len(self.game.get_boardState()))
+		children_nodes = self.root_node.get_children()
+		#print(children_nodes)
+		Q = self.root_node.get_childrens_visit_counts()
+
 		for i in range(0,len(children_nodes)):
 			if children_nodes[i] != None:
 				a = self.rollout_game.action_from_s1_to_s2(self.root_node.get_state(), children_nodes[i].get_state())
@@ -96,6 +107,90 @@ class MCTS:
 			target_values[action] = Q_vals[i]
 
 		return softmax(target_values)
+
+	def get_visit_counts_tree(self, game):
+		current_node = self.root_node
+		visit_counts = []
+		visit_counts = self._go_to_child(current_node,visit_counts,game)
+		return visit_counts#print("FINISHED \n \n \n ",visit_counts)
+
+	def _get_node_distribution(self,node,legal_actions):
+		Q_values = np.zeros(len(self.game.get_boardState())*len(self.game.get_boardState()))
+		children_nodes = node.get_children()
+
+		#print(children_nodes)
+		Q = node.get_childrens_visit_counts()
+		for i in range(0,len(legal_actions)):
+			Q_values[legal_actions[i]]=Q[i]
+		#for i in range(0,len(children_nodes)):
+		#	if children_nodes[i] != None:
+		#		a = self.rollout_game.action_from_s1_to_s2(self.root_node.get_state(), children_nodes[i].get_state())
+
+				#print("!!!",self.root_node.get_state(), children_nodes[i].get_state(),a)
+		#		Q_values[a]=Q[i]
+
+		#print("Q vs Q_values(brukes) :" ,Q, Q_values)
+		#print("hehehehehehe",Q_values)
+		#print("hehehehehehe2",softmax(Q_values))
+		return Q_values
+
+	def _go_to_child(self, node, visit_counts,game):
+
+		#print("---")
+		#print("FIRST PRINT ",node.get_state(),visit_counts)
+		#print("! ", node.get_state(), node.get_num_played(), node.get_num_wins())
+		S = node.get_state()
+		game.set_state(S,1 ) # Doesnt matter which player
+		legal_actions = game.get_legal_actions()
+		children_states = game.get_padded_child_states()
+		children_nodes = node.get_children()
+		#print("children nodes: ",children_nodes)
+		if len(children_nodes) == 0:
+			#print("CHildren nodes return")
+			return visit_counts
+		else:
+			D =self._get_node_distribution(node,legal_actions)
+			#print("D_org ",D,D.sum())
+			game.print_state()
+			S = node.get_state()
+			game.set_state(S,2)
+			for i in range(0,len(D)):
+				if i not in legal_actions:
+					D[i] =0
+			#print("D second ", D,D.sum())
+			if D.sum() == 0:
+				for a in legal_actions:
+					D[a] = 1.0
+
+			D= softmax(D)
+			#print("D fixes", D)
+			#return visit_counts
+			#game.print_state()
+			#print("Legal actions : ",legal_actions)
+			#print(S)
+			#print("D after: ",D,D.sum())
+
+			#print("Visit counts append : ",S,D)
+			#print("Visit counts : ",visit_counts)
+			visit_counts.append([S,D])
+
+			#print("Visit counts appended: ",visit_counts)
+
+		b = False
+		for c in children_nodes:
+			if c != None and c.get_num_played() > 10:
+				#print("Going to CHILD : ",c)
+
+				#print("---")
+				visit_counts = self._go_to_child(c,visit_counts,game)
+				if visit_counts == None:
+					#print("PROBLEM HER", c.get_state())
+					b= True
+		if not b:
+			#print("bottom return :")
+
+			#print("---")
+			return visit_counts
 
 	def tree_search(self):
 		last_node = self.root_node
@@ -239,6 +334,7 @@ class MCTS:
 		self.game.set_state(state,last_player)
 		self.root_node = Node(state,last_player,None)
 		#self.previously_visited_nodes.append(self.root_node)
+		print(M)
 		for i in range(0,M):
 			self.rollout_game.set_state(state,last_player)
 			self.run_simulation(rollout_policy)
@@ -416,7 +512,7 @@ class Node():
 			if node is None:
 				Q_values.append(0)
 			else:
-				Q_values.append(node.get_num_wins())
+				Q_values.append(node.get_num_played())
 				#print(node.get_state()," state with ", node.get_last_player()," as last player leads to " ,node.get_num_wins()," wins out of ", node.get_num_played()," times = ",node.get_num_wins()/node.get_num_played())
 		return Q_values
 
@@ -495,6 +591,10 @@ class replay_buffer():
 		else:
 			self.current_size +=1
 
+	def save_experiences(self,experiences):
+		for i in range(0,len(experiences)):
+			self.save_experience(experiences[i][0],experiences[i][1])
+
 	def reset_buffer(self):
 		self.states = []
 		self.action_distributions=[]
@@ -542,9 +642,13 @@ class Policy_Network():
 		self.model = Sequential()
 		nn_struct = self.nn_struct
 		num_layers = len(nn_struct)
-		self.model.add(Dense(nn_struct[0],input_dim=self.input_dim))
-		for i in range(1,num_layers):
-			self.model.add(Dense(nn_struct[i], activation = self.activation_function))
+
+		#self.model.add(Dense(nn_struct[0],input_dim=self.input_dim))
+		self.model.add(Reshape((10,2),input_shape=(self.input_dim,)))
+		#for i in range(1,num_layers):
+		self.model.add(Conv1D(filters = 5,kernel_size=10,strides = 1,input_shape=(2,10)))
+		#self.model.add(Conv1D(nn_struct[1],(nn_struct[1]), activation = self.activation_function))
+
 		self.model.add(Dense(self.output_dim, activation = 'softmax'))
 		if self.optimizer == 'sgd':
 			optimizer = SGD(learning_rate = self.lr,momentum = 0.0, nesterov=False)
@@ -557,11 +661,11 @@ class Policy_Network():
 		#self.init_weights()
 		#
 		self.model.compile(loss='categorical_crossentropy',optimizer=self.optimizer)
-		#print(self.model.summary())
+		print(self.model.summary())
 		return self.model
 
 	def predict(self,state):
-		return self.model(state)#self.model.predict(state)
+		return self.model.predict(state)#self.model.predict(state)
 
 	def get_action(self,state, legal_actions,epsilon):
 		if random.random() < epsilon:
@@ -587,7 +691,7 @@ class Policy_Network():
 
 			#print(actions, " org prediction", actions.sum())
 
-
+			print("P : ",actions[0])
 			for i in range(0, len(actions[0])):
 				if i not in legal_actions:
 					#print(i," not in ", legal_actions)
@@ -599,6 +703,7 @@ class Policy_Network():
 			#print(actions[0], actions.sum())
 
 			#print("get action : ", actions, actions.sum(), legal_actions)
+
 			action = np.random.choice(len(actions[0]),1, p = actions[0])
 			while action not in legal_actions:
 				action = np.random.choice(len(actions[0]),1, p = actions[0])
@@ -637,4 +742,4 @@ class Policy_Network():
 		#print(target_batch)
 		#print("-")
 		#print(np.shape(state_batch), np.shape(target_batch))
-		self.model.fit(state_batch,target_batch,epochs = 5)
+		self.model.fit(state_batch,target_batch,epochs = 10)

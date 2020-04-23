@@ -27,16 +27,17 @@ policy_network = Agent.Policy_Network(boardsize)
 RBUF = Agent.replay_buffer(RBUF_size)
 num_tournament_games = 25
 
-learning_rate = 0.01
-NN_structure = [1000,1000,1000]
+
+learning_rate = 0.001
+NN_structure = [100,100]
 optimizer_ = 'Adam'
 activation_function_ = 'sigmoid'
 
-if False:
-    save_path = "./checkpoints/2020-04-22/2_nn_struct_"+str(NN_structure[0])+"_"+str(len(NN_structure))+"_"+optimizer_+"_"+activation_function_+"_size_"+str(boardsize)+"_lr_"+str(learning_rate)+"_chkp_"
+if True:
+    save_path = "./checkpoints/2020-04-23/nn_struct_"+str(NN_structure[0])+"_"+str(len(NN_structure))+"_"+optimizer_+"_"+activation_function_+"_size_"+str(boardsize)+"_lr_"+str(learning_rate)+"_chkp_"
     print(save_path)
     policies=[]
-    num_agents = 5
+    num_agents = 3
     for i in range(0,num_agents):
         policies.append(Agent.Policy_Network(boardsize,nn_struct=NN_structure))
         policies[i].load_weights(save_path+str(i))#"/home/vilde/Code/IT3105_/Hex-Game/checkpoints/2020-04-21/3_nn_struct_100_3_Adam_sigmoid_size_3_chkp_"+str(i))
@@ -104,7 +105,7 @@ if False:
         print("Player ",i," points : ", points[i]/((num_agents-1)*2.0*num_tournament_games+1))
 
 
-if True:
+if False:
     optimizers = ['Adam','SGD']
     activation_functions = ['sigmoid','relu']
     learning_rates =[0.01,0.001]
