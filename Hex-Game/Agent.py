@@ -1,7 +1,7 @@
 import numpy as np
 import random
 import tensorflow as tf
-from tensorflow.keras.optimizers import SGD
+from tensorflow.keras.optimizers import SGD, Adam, RMSprop, Adagrad
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import  Dense
 from tensorflow.keras.activations import relu,tanh,linear,sigmoid
@@ -11,18 +11,22 @@ import scipy
 DEBUGGING_VAL = False
 class MCTS:
 
-	def __init__(self, exploration_rate, game, rollout_game):
+	def __init__(self, exploration_rate, game, rollout_game,epsilon):
 		self.root_node = Node(game.get_NN_state(),game.get_last_player(), None)
 		self.exploration_rate = exploration_rate
 		self.game = game
 		self.rollout_game = rollout_game
+		self.epsilon = epsilon
 
 		#self.previously_visited_nodes = []
+
+	def set_epsilon(self,epsilon):
+		self.epsilon = epsilon
 	def get_distribution(self):
 		Q_values = np.zeros(len(self.game.get_boardState())*len(self.game.get_boardState()))
 		children_nodes = self.root_node.get_children()
 		#print(children_nodes)
-		Q = self.root_node.get_childrens_Q_values()
+		Q = self.root_node.get_childrens_visit_counts()
 		for i in range(0,len(children_nodes)):
 			if children_nodes[i] != None:
 				a = self.rollout_game.action_from_s1_to_s2(self.root_node.get_state(), children_nodes[i].get_state())
@@ -46,25 +50,23 @@ class MCTS:
 		return children_states[idx]
 
 	def rollout_policy(self,model):
-		actions = model.predict([[self.rollout_game.get_NN_state()]])
-		#print("1 - Action distribution : ", actions)
-		legal_actions = self.rollout_game.get_legal_actions()
-		#print(self.rollout_game.get_NN_state(), self.rollout_game.get_legal_actions())
-		for i in range(0, len(actions[0])):
-			#print( i , " in legal actions = ",legal_actions," ? ", i in legal_actions)
-			if i not in legal_actions:
-				#print(i, " not in ", legal_actions)
-				actions[0][i] = 0
-		#print("2 - Action distribution : ", actions)
-		actions = softmax(actions)
-		#print("run get child states")
-
-		#print("3 - Action distribution : ", actions)
+		#actions = model.predict([[self.rollout_game.get_NN_state()]])
 		children_states = self.rollout_game.get_padded_child_states()
-		idx = np.argmax(actions[0])
-		#print(" -",actions, len(actions[0]))
+		legal_actions = self.rollout_game.get_legal_actions()
+		#print("Children states: ", children_states)
+		if random.random() < self.epsilon:
+			#print("legal actions : ",legal_actions)
+			#print("Randomly chosen child : ",children_states[np.random.choice(legal_actions)])
+			return children_states[np.random.choice(legal_actions)]
+		for child_state in children_states:
+			#print("Child state : ", child_state)
+			if len(child_state) >0 :
+				if self.rollout_game.is_state_end_state(child_state):
+					return child_state
+		idx = model.get_distributed_action(self.rollout_game.get_NN_state(), legal_actions,self.epsilon)
+		#print(idx)#print(" -",actions, len(actions[0]))
 		#print("-",children_states,len(children_states))
-		return children_states[idx]
+		return children_states[idx[0]]
 
 
 	def tree_policy(self,root_node):
@@ -106,7 +108,7 @@ class MCTS:
 		#self.rollout_game.print_state()
 		#print("+???")
 		if len(current_node.get_children()) == 0:
-			print("Node expansion happening")
+			#print("Node expansion happening")
 			self.node_expansion(current_node)
 		next_node_idx = None
 		#print("!!!")
@@ -361,6 +363,7 @@ class Node():
 	def update_stats(self, result,num_plays = 1):
 		self.num_wins += result
 		self.num_played += num_plays
+
 	def update_child_stats(self,result, child_idx,child_state,parent_last_player):
 		if self.children[child_idx] == None:
 			if parent_last_player == 1:
@@ -390,7 +393,7 @@ class Node():
 		else:
 			for node in self.children:
 				if node is None:
-					UCT_values.append(0.5+np.sqrt(np.log(self.num_played)))
+					UCT_values.append(np.sqrt(np.log(self.num_played)))
 				else:
 					UCT_values.append(np.sqrt(np.log(self.num_played)/(1+node.get_num_played())))
 		return UCT_values
@@ -404,6 +407,16 @@ class Node():
 				Q_values.append(0)
 			else:
 				Q_values.append(node.get_num_wins()/node.get_num_played())
+				#print(node.get_state()," state with ", node.get_last_player()," as last player leads to " ,node.get_num_wins()," wins out of ", node.get_num_played()," times = ",node.get_num_wins()/node.get_num_played())
+		return Q_values
+
+	def get_childrens_visit_counts(self):
+		Q_values=[]
+		for node in self.children:
+			if node is None:
+				Q_values.append(0)
+			else:
+				Q_values.append(node.get_num_wins())
 				#print(node.get_state()," state with ", node.get_last_player()," as last player leads to " ,node.get_num_wins()," wins out of ", node.get_num_played()," times = ",node.get_num_wins()/node.get_num_played())
 		return Q_values
 
@@ -448,6 +461,18 @@ class replay_buffer():
 		#print(np.shape(self.states)," ---> ", np.shape(return_States))
 		return np.array(return_States),np.array(return_Ds)
 
+	def RBUF_ready(self, size):
+		if size >self.max_size or (not self.is_full and size > self.current_size):
+			print("Requesting to big minibatch!")
+			return False
+		else:
+			return True
+
+	def rbuf_state(self):
+		return self.is_full, self.current_size
+
+
+
 	def print_RBUF(self):
 		if self.is_full:
 			I = self.max_size
@@ -475,6 +500,9 @@ class replay_buffer():
 		self.action_distributions=[]
 		self.current_size = 0
 
+	def is_rbuf_full(self):
+		return self.is_full
+
 
 
 def softmax(x):
@@ -482,34 +510,58 @@ def softmax(x):
 	sum = x.sum()
 	if sum == 0:
 		sum=1.0
+	#elif sum != 1:
 
+		#print("ERROR",x,sum, x/sum, (x/sum).sum())
+		#x+=(1-sum)/len(x)
+	#print("Agent.py : softmax() ",x/sum, sum)
 	return x/sum
 
 class Policy_Network():
 
-	def __init__(self, boardSize,lr = 0.001, nn_struct = [100,100]):
+	def __init__(self, boardSize,lr = 0.001, nn_struct = [100,100], activation_function = 'sigmoid',optimizer = 'sgd'):
 		self.boardSize = boardSize
 		self.output_dim = boardSize*boardSize
 		self.input_dim = boardSize*boardSize*2+2
+
 		self.nn_struct = nn_struct
 		self.lr = lr
+		self.activation_function=activation_function
+		self.optimizer = optimizer
+
 		self.model = self.createNN()
 
-	def createNN(self,activation_function = 'sigmoid'):
-		model = Sequential()
+	def init_weights(self):
+		# create weights with the right shape, e.g.
+		weights = [np.zeros(w.shape) +np.random.rand(*w.shape)/4.0 for w in self.model.get_weights()]
+
+		# update
+		self.model.set_weights(weights)
+
+	def createNN(self):
+		self.model = Sequential()
 		nn_struct = self.nn_struct
 		num_layers = len(nn_struct)
-		model.add(Dense(nn_struct[0],input_dim=self.input_dim))
+		self.model.add(Dense(nn_struct[0],input_dim=self.input_dim))
 		for i in range(1,num_layers):
-			model.add(Dense(nn_struct[i], activation = activation_function))
-		model.add(Dense(self.output_dim, activation = 'softmax'))
-		sgd = SGD(learning_rate = self.lr,momentum = 0.0, nesterov=False)
-		model.compile(loss='mse',optimizer=sgd)
-		print(model.summary())
-		return model
+			self.model.add(Dense(nn_struct[i], activation = self.activation_function))
+		self.model.add(Dense(self.output_dim, activation = 'softmax'))
+		if self.optimizer == 'sgd':
+			optimizer = SGD(learning_rate = self.lr,momentum = 0.0, nesterov=False)
+		elif self.optimizer == 'Adam':
+			optimizer = Adam(learning_rate = self.lr)
+		elif self.optimizer == 'RMSprop':
+			optimizer = RMSprop(learning_rate = self.lr)
+		elif self.optimizer == 'Adagrad':
+			optimizer = Adagrad(learning_rate = self.lr)
+		#self.init_weights()
+		#
+		self.model.compile(loss='categorical_crossentropy',optimizer=self.optimizer)
+		#print(self.model.summary())
+		return self.model
 
 	def predict(self,state):
-		return self.model.predict(state)
+		return self.model(state)#self.model.predict(state)
 
 	def get_action(self,state, legal_actions,epsilon):
 		if random.random() < epsilon:
@@ -526,6 +578,40 @@ class Policy_Network():
 			#print("2 - Action distribution : ", actions)
 			actions = softmax(actions)
 			return np.argmax(actions)
+	def get_distributed_action(self, state, legal_actions,epsilon):
+		if random.random()<epsilon:
+			return np.random.choice(legal_actions,1)
+		else:
+			#print("Not random action!", state)
+			actions= self.model.predict([[state]])#,batch_size=len([[state]]))
+
+			#print(actions, " org prediction", actions.sum())
+
+
+			for i in range(0, len(actions[0])):
+				if i not in legal_actions:
+					#print(i," not in ", legal_actions)
+					actions[0][i] = 0
+			if actions.sum()==0:
+				for i in legal_actions:
+					actions[0][i] = 1.0
+			actions = softmax(actions)
+			#print(actions[0], actions.sum())
+
+			#print("get action : ", actions, actions.sum(), legal_actions)
+			action = np.random.choice(len(actions[0]),1, p = actions[0])
+			while action not in legal_actions:
+				action = np.random.choice(len(actions[0]),1, p = actions[0])
+
+			return action
+
+	def print_distribution(self, state, legal_actions):
+		actions= self.model.predict([[state]])
+		for i in range(0, len(actions[0])):
+			if i not in legal_actions:
+				actions[0][i] = 0
+		actions = softmax(actions)
+		print(actions, actions[0].sum())
 
 	def get_distribution_and_action(self, state, legal_actions):
 		actions= self.model.predict([[state]])
@@ -542,7 +628,13 @@ class Policy_Network():
 		self.model.save_weights(path)
 
 	def load_weights(self,path):
+		#model = Sequential()
 		self.model.load_weights(path)
 
 	def train(self, state_batch, target_batch):
-		self.model.fit(state_batch,target_batch)
+		#print(state_batch)
+		#print("-")
+		#print(target_batch)
+		#print("-")
+		#print(np.shape(state_batch), np.shape(target_batch))
+		self.model.fit(state_batch,target_batch,epochs = 5)

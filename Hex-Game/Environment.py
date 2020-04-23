@@ -98,6 +98,8 @@ class HexGame(HexBoard):
 			self.last_player = 1
 
 
+
+
 	def do_action(self, action, player):
 		if player == self.last_player:
 			print("Not player ", player,"'s turn!")
@@ -125,11 +127,66 @@ class HexGame(HexBoard):
 	def get_winner(self):
 		for i in range(0,len(self.boardState)):
 			#print(" Starting point ", i)
-			if self.go_to_neighbor_p1(0,i,[[0,i]]):
+
+			if self.go_to_neighbor_p1(0,i,[]):
 				return 1
-			if self.go_to_neighbor_p2(i,0,[[i,0]]):
+			if self.go_to_neighbor_p2(i,0,[]):
 				return 2
 		return None
+
+	def _go_to_neighbor_p1(self,i,j,prev_visited):
+		connection = False
+		if self.boardState[i,j] != 1:
+			return False
+		if i== len(self.boardState)-1:
+
+			prev_visited.append([i,j])
+			print(prev_visited)
+			print("1 : ",[i,j])
+			return True
+		active_neighbours = []
+		for p in self.neighbor_paths:
+			if i + p[0] >= 0 and i + p[0] < len(self.boardState):
+				if j + p[1] >= 0 and j + p[1] < len(self.boardState):
+					if self.boardState[i+p[0],j+p[1]] == 1:
+						if [i+p[0],j+p[1]] not in prev_visited:
+							active_neighbours.append([i+p[0],j+p[1]])
+		if active_neighbours == []:
+			return False
+		for n in active_neighbours:
+			prev_visited.append([i,j])
+			if self.go_to_neighbor_p1(n[0],n[1],prev_visited):
+				connection = True
+		return connection
+
+	def _go_to_neighbor_p2(self,i,j,prev_visited):
+		#print([i,j])
+		connection = False
+		prev_visited.append([i,j])
+		if self.boardState[i,j] != 2:
+			return False
+		if j== len(self.boardState)-1:
+			print(prev_visited)
+			print("2 : ",[i,j])
+			return True
+		active_neighbours = []
+		for p in self.neighbor_paths:
+			if i + p[0] >= 0 and i + p[0] < len(self.boardState):
+				if j + p[1] >= 0 and j + p[1] < len(self.boardState):
+					if self.boardState[i+p[0],j+p[1]] == 2:
+						if [i+p[0],j+p[1]] not in prev_visited:
+							active_neighbours.append([i+p[0],j+p[1]])
+		if active_neighbours == []:
+			print(prev_visited)
+			return False
+		for n in active_neighbours:
+			if self.go_to_neighbor_p2(n[0],n[1],prev_visited):
+				connection = True
+		print(prev_visited)
+		return connection
+
+
+
 
 	def go_to_neighbor_p1(self,i,j, prev_visited): # i = 0 at beginning
 		connection = False
@@ -259,6 +316,24 @@ class HexGame(HexBoard):
 		self.last_player= l_p
 		return children_states
 
+	def any_child_state_winning(self):
+		org_state = self.get_NN_state()
+		l_p = self.last_player
+		children_states = []
+		actions = self.get_legal_actions()
+		#print("Actions :: ",actions)
+		for i in range(0,self.boardSize*self.boardSize):
+			if i in actions:
+				self.set_state(org_state,l_p)
+				self.last_player = l_p
+				if l_p == 1:
+					self.do_action(i,2)
+				else:
+					self.do_action(i,1)
+				if self.get_winner() != None:
+					return True,i
+		return False, None
+
 
 
 	def get_legal_actions(self):
@@ -364,7 +439,7 @@ class HexGame(HexBoard):
 					s.append(int(2))
 			else:
 				s.append(int(1))
-
+		#print("Set state : ",state, s)
 		for i in range(0,len(self.boardState)):
 			for j in range(0,len(self.boardState)):
 				self.boardState[i,j] = s[i*len(self.boardState)+j]
