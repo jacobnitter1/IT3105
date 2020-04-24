@@ -13,7 +13,7 @@ import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import tensorflow as tf
 
-boardsize =3
+boardsize =4
 starting_player = 1
 RBUF_size = 100
 minibatch_size = 10
@@ -21,25 +21,25 @@ minibatch_size = 10
 game= Environment.HexGame("Diamond",boardsize, starting_player)
 rollout_game = Environment.HexGame("Diamond",boardsize,starting_player)
 
-policy_network = Agent.Policy_Network(boardsize)
+policy_network = Agent.Policy_Network(boardsize, conv_bool = False)
 #mcts =Agent.MCTS( starting_player, game, rollout_game)
 
-RBUF = Agent.replay_buffer(RBUF_size)
-num_tournament_games = 25
+#RBUF = Agent.replay_buffer(RBUF_size)
+num_tournament_games = 100
 
 
 learning_rate = 0.001
-NN_structure = [100,100]
+NN_structure = [128,128,128]
 optimizer_ = 'Adam'
 activation_function_ = 'sigmoid'
 
 if True:
-    save_path = "./checkpoints/2020-04-23/nn_struct_"+str(NN_structure[0])+"_"+str(len(NN_structure))+"_"+optimizer_+"_"+activation_function_+"_size_"+str(boardsize)+"_lr_"+str(learning_rate)+"_chkp_"
+    save_path = "./checkpoints/2020-04-24/nn_struct_"+str(NN_structure[0])+"_"+str(len(NN_structure))+"_"+optimizer_+"_"+activation_function_+"_size_"+str(boardsize)+"_lr_"+str(learning_rate)+"_chkp_"
     print(save_path)
     policies=[]
     num_agents = 3
     for i in range(0,num_agents):
-        policies.append(Agent.Policy_Network(boardsize,nn_struct=NN_structure))
+        policies.append(Agent.Policy_Network(boardsize,nn_struct=NN_structure,conv_bool = False))
         policies[i].load_weights(save_path+str(i))#"/home/vilde/Code/IT3105_/Hex-Game/checkpoints/2020-04-21/3_nn_struct_100_3_Adam_sigmoid_size_3_chkp_"+str(i))
         #status.assert_existing_objects_matched()
     #print(policies)
@@ -50,6 +50,7 @@ if True:
         state=game.get_NN_state()
         legal_actions = game.get_legal_actions()
         print(i," distribution : ")
+        print(state)
         policies[i].print_distribution(state, legal_actions)
         for j in range(0,num_agents):
             if i  != j:
@@ -71,6 +72,7 @@ if True:
                         legal_actions = game.get_legal_actions()
                         #print("-",game.get_last_player())
                         if game.get_last_player() == 1:
+                            #print(state)
                             a = policies[j].get_distributed_action(state,legal_actions,0)
 
                             game.do_action(a,2)
@@ -85,6 +87,7 @@ if True:
                         result+=1
                         points[i] +=1
                     else:
+                        #print(game.get_winner())
                         points[j] +=1
                     #else:
                     #    print("player 2 won", game.get_winner())
@@ -106,10 +109,10 @@ if True:
 
 
 if False:
-    optimizers = ['Adam','SGD']
-    activation_functions = ['sigmoid','relu']
-    learning_rates =[0.01,0.001]
-    NN_structures=[[100,100,100],[100,100]]
+    optimizers = ['Adam']
+    activation_functions = ['sigmoid','relu','tanh']
+    learning_rates =[0.01,0.001,0.1]
+    NN_structures=[[100]]
     for optimizer_ in optimizers:
         for activation_function_ in activation_functions:
             for learning_rate in learning_rates:

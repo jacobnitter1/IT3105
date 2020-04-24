@@ -3,7 +3,7 @@ import random
 import tensorflow as tf
 from tensorflow.keras.optimizers import SGD, Adam, RMSprop, Adagrad
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import  Dense, Conv1D, Reshape
+from tensorflow.keras.layers import  Dense, Conv1D, Reshape,Flatten
 from tensorflow.keras.activations import relu,tanh,linear,sigmoid
 import math
 import scipy
@@ -68,16 +68,16 @@ class MCTS:
 		if random.random() < self.epsilon:
 			#print("legal actions : ",legal_actions)
 			#print("Randomly chosen child : ",children_states[np.random.choice(legal_actions)])
-			return children_states[np.random.choice(legal_actions)]
+			return children_states[model.get_distributed_action(self.rollout_game.get_NN_state(), legal_actions,self.epsilon)[0]]
 		for child_state in children_states:
 			#print("Child state : ", child_state)
 			if len(child_state) >0 :
 				if self.rollout_game.is_state_end_state(child_state):
 					return child_state
-		idx = model.get_distributed_action(self.rollout_game.get_NN_state(), legal_actions,self.epsilon)
+		idx = model.get_action(self.rollout_game.get_NN_state(), legal_actions,0)
 		#print(idx)#print(" -",actions, len(actions[0]))
 		#print("-",children_states,len(children_states))
-		return children_states[idx[0]]
+		return children_states[idx]
 
 
 	def tree_policy(self,root_node):
@@ -151,7 +151,7 @@ class MCTS:
 		else:
 			D =self._get_node_distribution(node,legal_actions)
 			#print("D_org ",D,D.sum())
-			game.print_state()
+			D_org =D
 			S = node.get_state()
 			game.set_state(S,2)
 			for i in range(0,len(D)):
@@ -159,10 +159,18 @@ class MCTS:
 					D[i] =0
 			#print("D second ", D,D.sum())
 			if D.sum() == 0:
+				#print("!-!")
+				#print(node.get_num_played())
+				#print(node.get_childrens_visit_counts())
+				#print(D_org)
+				#print(D)
+				#game.print_state()
+				#print("!-!")
 				for a in legal_actions:
 					D[a] = 1.0
+			else:
 
-			D= softmax(D)
+				D= softmax(D)
 			#print("D fixes", D)
 			#return visit_counts
 			#game.print_state()
@@ -172,13 +180,13 @@ class MCTS:
 
 			#print("Visit counts append : ",S,D)
 			#print("Visit counts : ",visit_counts)
-			visit_counts.append([S,D])
+				visit_counts.append([S,D])
 
 			#print("Visit counts appended: ",visit_counts)
 
 		b = False
 		for c in children_nodes:
-			if c != None and c.get_num_played() > 10:
+			if c != None and c.get_num_played() > 25:
 				#print("Going to CHILD : ",c)
 
 				#print("---")
@@ -334,7 +342,7 @@ class MCTS:
 		self.game.set_state(state,last_player)
 		self.root_node = Node(state,last_player,None)
 		#self.previously_visited_nodes.append(self.root_node)
-		print(M)
+		#print(M)
 		for i in range(0,M):
 			self.rollout_game.set_state(state,last_player)
 			self.run_simulation(rollout_policy)
@@ -619,17 +627,20 @@ def softmax(x):
 
 class Policy_Network():
 
-	def __init__(self, boardSize,lr = 0.001, nn_struct = [100,100], activation_function = 'sigmoid',optimizer = 'sgd'):
+	def __init__(self, boardSize,lr = 0.001, nn_struct = [100,100], activation_function = 'sigmoid',optimizer = 'sgd', conv_bool = True):
 		self.boardSize = boardSize
 		self.output_dim = boardSize*boardSize
 		self.input_dim = boardSize*boardSize*2+2
-
+		#print("input di ",self.input_dim)
 		self.nn_struct = nn_struct
 		self.lr = lr
 		self.activation_function=activation_function
 		self.optimizer = optimizer
+		if conv_bool :
+			self.model = self.create_conv_NN()
 
-		self.model = self.createNN()
+		else:
+			self.model = self.create_NN()
 
 	def init_weights(self):
 		# create weights with the right shape, e.g.
@@ -638,17 +649,16 @@ class Policy_Network():
 		# update
 		self.model.set_weights(weights)
 
-	def createNN(self):
+	def create_conv_NN(self):
 		self.model = Sequential()
 		nn_struct = self.nn_struct
 		num_layers = len(nn_struct)
 
-		#self.model.add(Dense(nn_struct[0],input_dim=self.input_dim))
-		self.model.add(Reshape((10,2),input_shape=(self.input_dim,)))
-		#for i in range(1,num_layers):
-		self.model.add(Conv1D(filters = 5,kernel_size=10,strides = 1,input_shape=(2,10)))
-		#self.model.add(Conv1D(nn_struct[1],(nn_struct[1]), activation = self.activation_function))
-
+		self.model.add(Dense(nn_struct[0],input_dim=self.input_dim))
+		self.model.add(Reshape((int(nn_struct[0]/2),2),input_shape=(nn_struct[0],)))
+		self.model.add(Conv1D(filters = 25,kernel_size=10,strides = 1,input_shape=(int(self.input_dim/4),4), activation = self.activation_function))
+		self.model.add(Flatten())
+		self.model.add(Dense(nn_struct[1],activation = self.activation_function))
 		self.model.add(Dense(self.output_dim, activation = 'softmax'))
 		if self.optimizer == 'sgd':
 			optimizer = SGD(learning_rate = self.lr,momentum = 0.0, nesterov=False)
@@ -659,10 +669,34 @@ class Policy_Network():
 		elif self.optimizer == 'Adagrad':
 			optimizer = Adagrad(learning_rate = self.lr)
 		#self.init_weights()
-		#
+		#categorical_crossentropy
 		self.model.compile(loss='categorical_crossentropy',optimizer=self.optimizer)
 		print(self.model.summary())
 		return self.model
+
+	def create_NN(self):
+		self.model = Sequential()
+		nn_struct = self.nn_struct
+		num_layers = len(nn_struct)
+		self.model.add(Dense(nn_struct[0],input_dim = self.input_dim))
+		for i in range(1,num_layers):
+			self.model.add(Dense(nn_struct[i],activation = self.activation_function))
+		self.model.add(Dense(self.output_dim, activation = 'softmax'))
+		if self.optimizer == 'sgd':
+			optimizer = SGD(learning_rate = self.lr,momentum = 0.0, nesterov=False)
+		elif self.optimizer == 'Adam':
+			optimizer = Adam(learning_rate = self.lr)
+		elif self.optimizer == 'RMSprop':
+			optimizer = RMSprop(learning_rate = self.lr)
+		elif self.optimizer == 'Adagrad':
+			optimizer = Adagrad(learning_rate = self.lr)
+		#
+		#categorical_crossentropy
+		self.model.compile(loss='mse',optimizer=self.optimizer)
+		self.init_weights()
+		print(self.model.summary())
+		return self.model
+
 
 	def predict(self,state):
 		return self.model.predict(state)#self.model.predict(state)
@@ -687,11 +721,12 @@ class Policy_Network():
 			return np.random.choice(legal_actions,1)
 		else:
 			#print("Not random action!", state)
+			#print(state)
 			actions= self.model.predict([[state]])#,batch_size=len([[state]]))
 
 			#print(actions, " org prediction", actions.sum())
 
-			print("P : ",actions[0])
+			#print("P : ",actions[0])
 			for i in range(0, len(actions[0])):
 				if i not in legal_actions:
 					#print(i," not in ", legal_actions)
@@ -737,6 +772,7 @@ class Policy_Network():
 		self.model.load_weights(path)
 
 	def train(self, state_batch, target_batch):
+
 		#print(state_batch)
 		#print("-")
 		#print(target_batch)
